@@ -1,10 +1,12 @@
 tosca_definitions_version: cloudify_dsl_1_4
 
 imports:
+
   - https://cloudify.co/spec/cloudify/6.4.0/types.yaml
   - plugin:cloudify-kubernetes-plugin?version= >=2.7.0
 
 inputs:
+
 
   app_name:
     display_label: App Name
@@ -34,6 +36,7 @@ inputs:
 
 node_templates:
 
+
   hello-world:
     type: cloudify.nodes.kubernetes.resources.FileDefinedResource
     properties:
@@ -51,10 +54,10 @@ node_templates:
           PORT: { get_input: container_port }
           CONTAINER_NAME: { get_input: app_name }
           CONTAINER_IMAGE: { get_input: container }
-
 outputs:
 
   service:
     description: Service endpoint
     value:
-      endpoint: { concat: ["http://", { get_attribute: [hello-world, kubernetes, resources.yaml#1, status, load_balancer, ingress, 0, ip] } ] }
+      endpoint: { concat: [http://, {get_attribute: [hello-world, kubernetes, resources.yaml#1, status, load_balancer, ingress, 0, ip]}] }
+
