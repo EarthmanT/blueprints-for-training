@@ -1,24 +1,26 @@
 tosca_definitions_version: cloudify_dsl_1_4
-
 description: >
+
   This blueprint creates infrastructure on AWS using Terraform.
 
 imports:
+
   - https://cloudify.co/spec/cloudify/6.4.0/types.yaml
   - plugin:cloudify-terraform-plugin?version= >=0.15.0
   - plugin:cloudify-utilities-plugin?version= >=1.22.1
 
 inputs:
 
+
   agent_user:
     description: >
       The username of the agent running on the instance created from the image.
     type: string
-    default: 'centos'
+    default: centos
 
   aws_region_name:
     type: string
-    default: 'us-east-1'
+    default: us-east-1
     constraints:
       - valid_values:
           - us-east-1
@@ -59,9 +61,13 @@ inputs:
 
   env_name:
     type: string
-    default: 'example'
+    default: example
 
 node_templates:
+
+
+  terraform:
+    type: cloudify.nodes.terraform
 
   cloud_resources:
     type: cloudify.nodes.terraform.Module
@@ -76,7 +82,7 @@ node_templates:
           secret_key: { get_secret: aws_secret_access_key }
           token: { get_secret: aws_session_token }
           aws_region: { get_input: aws_region_name }
-          aws_zone: { concat: [ { get_input: aws_region_name }, 'a' ] }
+          aws_zone: { concat: [{get_input: aws_region_name}, a] }
           admin_user: { get_input: agent_user }
           admin_key_public: { get_attribute: [agent_key, public_key_export] }
     relationships:
@@ -84,9 +90,6 @@ node_templates:
         type: cloudify.relationships.terraform.run_on_host
       - target: agent_key
         type: cloudify.relationships.depends_on
-
-  terraform:
-    type: cloudify.nodes.terraform
 
   agent_key:
     type: cloudify.keys.nodes.RSAKey
@@ -102,19 +105,19 @@ node_templates:
           implementation: keys.cloudify_ssh_key.operations.create
           inputs:
             store_private_key_material: true
-
 capabilities:
-  name:
-    description: 'name'
-    value: { get_attribute: [ cloud_resources, resources, example_vm, instances, 0, attributes, tags, Name ] }
 
-  endpoint:
-    description: The external endpoint of the application.
-    value: { get_attribute: [ cloud_resources, resources, eip, instances, 0, attributes, public_ip ] }
+  name:
+    description: name
+    value: { get_attribute: [cloud_resources, resources, example_vm, instances, 0, attributes, tags, Name] }
 
   user:
     description: user ID.
     value: { get_input: agent_user }
+
+  endpoint:
+    description: The external endpoint of the application.
+    value: { get_attribute: [cloud_resources, resources, eip, instances, 0, attributes, public_ip] }
 
   key_content:
     description: Private agent key

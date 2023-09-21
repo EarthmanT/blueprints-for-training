@@ -1,16 +1,19 @@
 tosca_definitions_version: cloudify_dsl_1_4
 
 imports:
+
   - https://cloudify.co/spec/cloudify/6.2.0/types.yaml
   - plugin:cloudify-terraform-plugin?version= >=0.15.0
   - https://raw.githubusercontent.com/cloudify-community/eaas-example/master/utils/custom_types.yaml
 
 inputs:
+
+
   env_name:
     type: string
     default: ''
     constraints:
-      - pattern: '(^ *$)|(^[a-zA-Z][a-zA-Z0-9]+$)'
+      - pattern: (^ *$)|(^[a-zA-Z][a-zA-Z0-9]+$)
 
   azure_location_name:
     type: string
@@ -19,11 +22,11 @@ inputs:
     default: EastUS
     constraints:
       - valid_values:
-        - EastUS
-        - CentralUS
-        - WestUS
-        - WestEurope
-        - CanadaCentral
+          - EastUS
+          - CentralUS
+          - WestUS
+          - WestEurope
+          - CanadaCentral
 
   cidr_block:
     type: string
@@ -40,18 +43,19 @@ inputs:
     default: 10.0.1.0/24
     hidden: true
 
-
 node_templates:
+
+
+  prefix:
+    type: eaas.nodes.UniquePrefixGenerator
+    properties:
+      predefined_value: { get_input: env_name }
+
   terraform:
     type: cloudify.nodes.terraform
     properties:
       resource_config:
         installation_source: https://releases.hashicorp.com/terraform/0.14.3/terraform_0.14.3_linux_amd64.zip
-
-  prefix:
-      type: eaas.nodes.UniquePrefixGenerator
-      properties:
-        predefined_value: { get_input: env_name }
 
   terraform_module:
     type: cloudify.nodes.terraform.Module
@@ -64,19 +68,19 @@ node_templates:
           ARM_CLIENT_SECRET: { get_secret: azure_client_secret }
         variables:
           azure_location_name: { get_input: azure_location_name }
-          rg_name: { concat : [ { get_attribute : [prefix, value] }, 'rg' ] }
-          rg_tags: 
-            Name: { get_attribute : [prefix, value] }
-          sg_name: { concat: [ { get_attribute : [prefix, value] } , '-cfy-agents' ] }
-          vnet_name: { concat: [ { get_attribute : [prefix, value] }, '-vnet' ] }
-          vnet_tags: 
-            Name: { concat: [ { get_attribute : [prefix, value] }, '-vnet' ] }
+          rg_name: { concat: [{get_attribute: [prefix, value]}, rg] }
+          rg_tags:
+            Name: { get_attribute: [prefix, value] }
+          sg_name: { concat: [{get_attribute: [prefix, value]}, -cfy-agents] }
+          vnet_name: { concat: [{get_attribute: [prefix, value]}, -vnet] }
+          vnet_tags:
+            Name: { concat: [{get_attribute: [prefix, value]}, -vnet] }
           cidr_block: { get_input: cidr_block }
-          subnet_1_name: { concat: [ { get_attribute : [prefix, value] }, '-subnet-1' ] }
+          subnet_1_name: { concat: [{get_attribute: [prefix, value]}, -subnet-1] }
           subnet_1_cidr: { get_input: subnet_1_cidr }
-          subnet_2_name: { concat: [ { get_attribute : [prefix, value] }, '-subnet-2' ] }
+          subnet_2_name: { concat: [{get_attribute: [prefix, value]}, -subnet-2] }
           subnet_2_cidr: { get_input: subnet_2_cidr }
-          sa_name: { concat: [ { get_attribute : [prefix, value] }, 'sa' ] }
+          sa_name: { concat: [{get_attribute: [prefix, value]}, sa] }
         source:
           location: templates/tf-azure-vpc-master.zip
     relationships:
@@ -84,34 +88,39 @@ node_templates:
         type: cloudify.terraform.relationships.run_on_host
       - target: prefix
         type: cloudify.relationships.depends_on
-
 labels:
-  obj-type: 
-    values: 
+
+  obj-type:
+    values:
       - aws
       - terraform
-
 capabilities:
+
   rg_id:
-    description: |
+    description: >
       Azure ID of the Resource Group
-    value: { get_attribute: [ terraform_module, resources, rg, instances, 0, attributes, name ] }
+    value: { get_attribute: [terraform_module, resources, rg, instances, 0, attributes, name] }
+
   vn_id:
-    description: |
+    description: >
       Azure ID of the Virtual Network
-    value: { get_attribute: [ terraform_module, resources, vnet, instances, 0, attributes, name ] }
+    value: { get_attribute: [terraform_module, resources, vnet, instances, 0, attributes, name] }
+
   subnet_ids:
-    description: |
+    description: >
       Azure ID's of subnets
-    value: 
-      - { get_attribute: [ terraform_module, resources, subnet_1, instances, 0, attributes, name ] }
-      - { get_attribute: [ terraform_module, resources, subnet_2, instances, 0, attributes, name ] }
+    value:
+      - { get_attribute: [terraform_module, resources, subnet_1, instances, 0, attributes, name] }
+      - { get_attribute: [terraform_module, resources, subnet_2, instances, 0, attributes, name] }
+
+  VM's via SSH
+    value: { get_attribute: [terraform_module, resources, sg, instances, 0, attributes, name] }
+
   agents_security_group_id:
-    description: |
+    description: >
       Azure ID of a security group that allows Cloudify Manager to access
-      VM's via SSH
-    value: { get_attribute: [ terraform_module, resources, sg, instances, 0, attributes, name ] }
+
   sa_id:
-    description: |
+    description: >
       Azure ID of the Storage Account
-    value: { get_attribute: [ terraform_module, resources, sa, instances, 0, attributes, name ] }
+    value: { get_attribute: [terraform_module, resources, sa, instances, 0, attributes, name] }

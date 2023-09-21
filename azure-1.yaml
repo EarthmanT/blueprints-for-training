@@ -1,12 +1,14 @@
 tosca_definitions_version: cloudify_dsl_1_4
 
-
 imports:
+
   - https://cloudify.co/spec/cloudify/6.4.0/types.yaml
   - plugin:cloudify-terraform-plugin
   - plugin:cloudify-ansible-plugin
 
 inputs:
+
+
   azure_region_name:
     type: string
     description: Azure Region to deploy resources into
@@ -63,13 +65,13 @@ inputs:
     type: list
     description: A list of CIDR networks for the deployed Azure network
     default:
-      - "10.0.0.0/16"
+      - 10.0.0.0/16
 
   subnet_cidr:
     type: list
     description: A list of CIDR subnets for the deployed Azure subnet. Must fall within the network CIDR.
     default:
-      - "10.0.1.0/24"
+      - 10.0.1.0/24
 
   prefix:
     type: string
@@ -87,12 +89,13 @@ inputs:
 
 node_templates:
 
+
   terraform:
     type: cloudify.nodes.terraform
     properties:
       resource_config:
         installation_source: https://releases.hashicorp.com/terraform/1.1.4/terraform_1.1.4_linux_amd64.zip
-  
+
   shared_resources:
     type: cloudify.nodes.terraform.Module
     properties:
@@ -112,31 +115,6 @@ node_templates:
     relationships:
       - type: cloudify.terraform.relationships.run_on_host
         target: terraform
-
-  app:
-    type: cloudify.nodes.ansible.Playbook
-    interfaces:
-      cloudify.interfaces.lifecycle:
-        poststart: {}
-    relationships:
-      - type: cloudify.ansible.relationships.run_on_host
-        target: vm
-        source_interfaces:
-          cloudify.interfaces.relationship_lifecycle:
-            establish:
-              inputs:
-                playbook_path: playbooks/install_nginx.yaml
-                sources:
-                  instances:
-                    hosts:
-                      instance:
-                        ansible_host: { get_attribute: [ TARGET, outputs, ip, value ] }
-                        ansible_user: centos
-                        ansible_ssh_private_key_file: { get_secret: private_key_content }
-                        ansible_become: true
-                        ansible_ssh_common_args: -o StrictHostKeyChecking=no
-                run_data:
-                  message: { get_input: website_message }
 
   vm:
     type: cloudify.nodes.terraform.Module
@@ -163,16 +141,49 @@ node_templates:
       - type: cloudify.relationships.connected_to
         target: shared_resources
 
+  app:
+    type: cloudify.nodes.ansible.Playbook
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        poststart: {}
+    relationships:
+      - type: cloudify.ansible.relationships.run_on_host
+        target: vm
+        source_interfaces:
+          cloudify.interfaces.relationship_lifecycle:
+            establish:
+              inputs:
+                playbook_path: playbooks/install_nginx.yaml
+                sources:
+                  instances:
+                    hosts:
+                      instance:
+                        ansible_host: { get_attribute: [TARGET, outputs, ip, value] }
+                        ansible_user: centos
+                        ansible_ssh_private_key_file: { get_secret: private_key_content }
+                        ansible_become: true
+                        ansible_ssh_common_args: -o StrictHostKeyChecking=no
+                run_data:
+                  message: { get_input: website_message }
 groups:
+
   server_and_app:
-    members: [vm, app]
-
+    members:
+      - vm
+      - app
 policies:
-  scaling_policy:
-    type: cloudify.policies.scaling
-    targets: [server_and_app]
 
-outputs:
   instance_ips:
     description: IP addresses of any deployed instances
-    value: { get_attributes_list: [vm, outputs, ip, value] }
+    value:
+      get_attributes_list:
+        - vm
+        - outputs
+        - ip
+        - value
+
+  scaling_policy:
+    type: cloudify.policies.scaling
+    targets:
+      - server_and_app
+outputs:

@@ -1,24 +1,36 @@
 tosca_definitions_version: cloudify_dsl_1_4
-
 description: >
+
   This blueprint creates infrastructure on IBM Cloud using Terraform.
+
 imports:
+
   - https://cloudify.co/spec/cloudify/6.4.0/types.yaml
   - plugin:cloudify-terraform-plugin?version= >=0.15.0
   - plugin:cloudify-utilities-plugin?version= >=1.22.1
 
 inputs:
 
+
   region_name:
     type: string
-    default: "eu-de"
+    default: eu-de
     constraints:
-      - valid_values: ["us-south", "br-sao", "ca-tor", "us-east", "eu-de", "eu-gb", "jp-osa", "au-syd", "jp-tok"]
+      - valid_values:
+          - us-south
+          - br-sao
+          - ca-tor
+          - us-east
+          - eu-de
+          - eu-gb
+          - jp-osa
+          - au-syd
+          - jp-tok
 
   image:
     type: string
     description: IMB Cloud Image name
-    default: "ibm-centos-7-6-minimal-amd64-2"
+    default: ibm-centos-7-6-minimal-amd64-2
 
   agent_user:
     type: string
@@ -41,6 +53,10 @@ inputs:
     default: cfy
 
 node_templates:
+
+
+  terraform:
+    type: cloudify.nodes.terraform
 
   cloud_resources:
     type: cloudify.nodes.terraform.Module
@@ -75,14 +91,7 @@ node_templates:
           implementation: keys.cloudify_ssh_key.operations.create
           inputs:
             store_private_key_material: true
-
-  terraform:
-    type: cloudify.nodes.terraform
-
 capabilities:
-  name:
-    description: name
-    value: { get_attribute: [ cloud_resources, resources, vm, instances, 0, attributes, id ] }
 
   user:
     description: user ID.
@@ -91,3 +100,7 @@ capabilities:
   key_content:
     description: Private agent key
     value: { get_attribute: [agent_key, private_key_export] }
+
+  name:
+    description: name
+    value: { get_attribute: [cloud_resources, resources, vm, instances, 0, attributes, id] }

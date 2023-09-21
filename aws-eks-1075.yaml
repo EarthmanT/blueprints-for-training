@@ -1,6 +1,7 @@
 tosca_definitions_version: cloudify_dsl_1_4
 
 imports:
+
   - https://cloudify.co/spec/cloudify/6.4.0/types.yaml
   - plugin:cloudify-aws-plugin?version= >=3.1.3
   - plugin:cloudify-kubernetes-plugin?version= >=2.11.0
@@ -9,78 +10,77 @@ imports:
 
 inputs:
 
+
   aws_access_key_id:
-    display_label: 'Aws Access Key Id'
+    display_label: Aws Access Key Id
     type: string
     default: { get_secret: aws_access_key_id }
 
   aws_secret_access_key:
-    display_label: 'Aws Secret Access Key'
+    display_label: Aws Secret Access Key
     type: string
     default: { get_secret: aws_secret_access_key }
 
   aws_region_name:
-    display_label: 'Aws Region Name'
+    display_label: Aws Region Name
     type: string
-    default: 'us-east-1'
+    default: us-east-1
 
   availability_zone_1:
-    display_label: 'Availability Zone 1'
+    display_label: Availability Zone 1
     type: string
-    default: { concat: [ { get_input: aws_region_name}, 'd' ] }
+    default: { concat: [{get_input: aws_region_name}, d] }
 
   availability_zone_2:
-    display_label: 'Availability Zone 2'
+    display_label: Availability Zone 2
     type: string
-    default: { concat: [ { get_input: aws_region_name}, 'e' ] }
+    default: { concat: [{get_input: aws_region_name}, e] }
 
   eks_cluster_name:
-    display_label: 'Eks Cluster Name'
+    display_label: Eks Cluster Name
     type: string
     default: eks_cluster_name
 
   env_name:
-    display_label: 'Env Name'
+    display_label: Env Name
     type: string
     default: { get_input: eks_cluster_name }
 
   eks_nodegroup_name:
-    display_label: 'Eks Nodegroup Name'
+    display_label: Eks Nodegroup Name
     type: string
-    default: { concat: [ 'eks_node_group', { get_input: env_name } ] }
+    default: { concat: [eks_node_group, {get_input: env_name}] }
 
   kubernetes_version:
-    display_label: 'Kubernetes Version'
+    display_label: Kubernetes Version
     type: string
     default: ''
 
   service_account_name:
-    display_label: 'Service Account Name'
+    display_label: Service Account Name
     type: string
     default: examples-user
 
   service_account_namespace:
-    display_label: 'Service Account Namespace'
+    display_label: Service Account Namespace
     type: string
     default: default
 
   ssh_keypair:
-    display_label: 'Ssh Keypair'
+    display_label: Ssh Keypair
     type: string
-    default: { concat: [ 'eks_key', { get_input: env_name } ] }
+    default: { concat: [eks_key, {get_input: env_name}] }
 
   agent_key_name:
-    display_label: 'Agent Key Name'
+    display_label: Agent Key Name
     type: string
     default: agent_key
-
 dsl_definitions:
 
-  client_config: &client_config
+  client_config:
     aws_access_key_id: { get_input: aws_access_key_id }
     aws_secret_access_key: { get_input: aws_secret_access_key }
     region_name: { get_input: aws_region_name }
-
 node_types:
 
   cloudify.nodes.EKSHelper:
@@ -96,10 +96,14 @@ node_types:
 
 node_templates:
 
+
   keypair:
     type: cloudify.nodes.aws.ec2.Keypair
     properties:
-      client_config: *client_config
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
       cloudify_tagging: false
       resource_config:
         KeyName: { get_input: ssh_keypair }
@@ -111,18 +115,21 @@ node_templates:
   eks_service_iam_role:
     type: cloudify.nodes.aws.iam.Role
     properties:
-      resource_id: { concat: [ 'eks_service_iam_role', { get_input: env_name } ] }
-      client_config: *client_config
+      resource_id: { concat: [eks_service_iam_role, {get_input: env_name}] }
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
       resource_config:
-        RoleName: { concat: [ 'eks_test_role', { get_input: env_name } ] }
-        Path: !!str /
+        RoleName: { concat: [eks_test_role, {get_input: env_name}] }
+        Path: /
         AssumeRolePolicyDocument:
-          Version: !!str 2012-10-17
+          Version: '2012-10-17'
           Statement:
             - Effect: Allow
               Principal:
-                Service: !!str eks.amazonaws.com
-              Action: !!str sts:AssumeRole
+                Service: eks.amazonaws.com
+              Action: sts:AssumeRole
     interfaces:
       cloudify.interfaces.lifecycle:
         create:
@@ -135,18 +142,21 @@ node_templates:
   eks_nodegroup_iam_role:
     type: cloudify.nodes.aws.iam.Role
     properties:
-      resource_id: { concat: [ 'eks_nodegroup_iam_role', { get_input: env_name } ] }
-      client_config: *client_config
+      resource_id: { concat: [eks_nodegroup_iam_role, {get_input: env_name}] }
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
       resource_config:
-        RoleName: { concat: [ 'eks_nodegroup_test_role', { get_input: env_name } ] }
-        Path: !!str /
+        RoleName: { concat: [eks_nodegroup_test_role, {get_input: env_name}] }
+        Path: /
         AssumeRolePolicyDocument:
-          Version: !!str 2012-10-17
+          Version: '2012-10-17'
           Statement:
             - Effect: Allow
               Principal:
-                Service: !!str ec2.amazonaws.com
-              Action: !!str sts:AssumeRole
+                Service: ec2.amazonaws.com
+              Action: sts:AssumeRole
     interfaces:
       cloudify.interfaces.lifecycle:
         create:
@@ -161,18 +171,15 @@ node_templates:
     type: cloudify.nodes.aws.ec2.Vpc
     properties:
       resource_config:
-        CidrBlock: '10.0.0.0/16'
-      client_config: *client_config
+        CidrBlock: 10.0.0.0/16
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
       Tags:
         - Key: Name
-          Value:
-            concat:
-              - 'vpc-'
-              - { get_input: env_name }
-        - Key:
-            concat:
-              - kubernetes.io/cluster/
-              - { get_input: env_name }
+          Value: { concat: [vpc-, {get_input: env_name}] }
+        - Key: { concat: [kubernetes.io/cluster/, {get_input: env_name}] }
           Value: shared
     interfaces:
       cloudify.interfaces.lifecycle:
@@ -186,7 +193,10 @@ node_templates:
   internet_gateway:
     type: cloudify.nodes.aws.ec2.InternetGateway
     properties:
-      client_config: *client_config
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
     relationships:
       - type: cloudify.relationships.connected_to
         target: vpc
@@ -195,16 +205,16 @@ node_templates:
     type: cloudify.nodes.aws.ec2.Subnet
     properties:
       resource_config:
-        CidrBlock: '10.0.0.0/24'
+        CidrBlock: 10.0.0.0/24
         AvailabilityZone: { get_input: availability_zone_1 }
-      client_config: *client_config
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
       Tags:
         - Key: Name
           Value: eks_private_subnet_01
-        - Key:
-            concat:
-              - kubernetes.io/cluster/
-              - { get_input: env_name }
+        - Key: { concat: [kubernetes.io/cluster/, {get_input: env_name}] }
           Value: shared
         - Key: kubernetes.io/role/internal-elb
           Value: '1'
@@ -217,7 +227,10 @@ node_templates:
   private_route_table_01:
     type: cloudify.nodes.aws.ec2.RouteTable
     properties:
-      client_config: *client_config
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
     relationships:
       - type: cloudify.relationships.contained_in
         target: vpc
@@ -228,16 +241,16 @@ node_templates:
     type: cloudify.nodes.aws.ec2.Subnet
     properties:
       resource_config:
-        CidrBlock: '10.0.1.0/24'
+        CidrBlock: 10.0.1.0/24
         AvailabilityZone: { get_input: availability_zone_2 }
-      client_config: *client_config
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
       Tags:
         - Key: Name
           Value: eks_private_subnet_02
-        - Key:
-            concat:
-              - kubernetes.io/cluster/
-              - { get_input: env_name }
+        - Key: { concat: [kubernetes.io/cluster/, {get_input: env_name}] }
           Value: shared
         - Key: kubernetes.io/role/internal-elb
           Value: '1'
@@ -250,7 +263,10 @@ node_templates:
   private_route_table_02:
     type: cloudify.nodes.aws.ec2.RouteTable
     properties:
-      client_config: *client_config
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
     relationships:
       - type: cloudify.relationships.contained_in
         target: vpc
@@ -261,16 +277,16 @@ node_templates:
     type: cloudify.nodes.aws.ec2.Subnet
     properties:
       resource_config:
-        CidrBlock: '10.0.2.0/24'
+        CidrBlock: 10.0.2.0/24
         AvailabilityZone: { get_input: availability_zone_1 }
-      client_config: *client_config
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
       Tags:
         - Key: Name
           Value: eks_public_subnet_01
-        - Key:
-            concat:
-              - kubernetes.io/cluster/
-              - { get_input: env_name }
+        - Key: { concat: [kubernetes.io/cluster/, {get_input: env_name}] }
           Value: shared
         - Key: kubernetes.io/role/elb
           Value: '1'
@@ -292,16 +308,16 @@ node_templates:
     type: cloudify.nodes.aws.ec2.Subnet
     properties:
       resource_config:
-        CidrBlock: '10.0.3.0/24'
+        CidrBlock: 10.0.3.0/24
         AvailabilityZone: { get_input: availability_zone_2 }
-      client_config: *client_config
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
       Tags:
         - Key: Name
           Value: eks_public_subnet_02
-        - Key:
-            concat:
-              - kubernetes.io/cluster/
-              - { get_input: env_name }
+        - Key: { concat: [kubernetes.io/cluster/, {get_input: env_name}] }
           Value: shared
         - Key: kubernetes.io/role/elb
           Value: '1'
@@ -322,7 +338,10 @@ node_templates:
   public_route_table_01:
     type: cloudify.nodes.aws.ec2.RouteTable
     properties:
-      client_config: *client_config
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
     relationships:
       - type: cloudify.relationships.contained_in
         target: vpc
@@ -334,8 +353,11 @@ node_templates:
     properties:
       resource_config:
         kwargs:
-          DestinationCidrBlock: '0.0.0.0/0'
-      client_config: *client_config
+          DestinationCidrBlock: 0.0.0.0/0
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
     relationships:
       - type: cloudify.relationships.contained_in
         target: public_route_table_01
@@ -345,7 +367,10 @@ node_templates:
   public_route_table_02:
     type: cloudify.nodes.aws.ec2.RouteTable
     properties:
-      client_config: *client_config
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
     relationships:
       - type: cloudify.relationships.contained_in
         target: vpc
@@ -357,8 +382,11 @@ node_templates:
     properties:
       resource_config:
         kwargs:
-          DestinationCidrBlock: '0.0.0.0/0'
-      client_config: *client_config
+          DestinationCidrBlock: 0.0.0.0/0
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
     relationships:
       - type: cloudify.relationships.contained_in
         target: public_route_table_02
@@ -370,13 +398,19 @@ node_templates:
     properties:
       resource_config:
         kwargs:
-          Domain: 'vpc'
-      client_config: *client_config
+          Domain: vpc
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
 
   nat_gateway_01:
     type: cloudify.nodes.aws.ec2.NATGateway
     properties:
-      client_config: *client_config
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
       resource_config:
         kwargs:
           ConnectivityType: public
@@ -391,13 +425,19 @@ node_templates:
     properties:
       resource_config:
         kwargs:
-          Domain: 'vpc'
-      client_config: *client_config
+          Domain: vpc
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
 
   nat_gateway_02:
     type: cloudify.nodes.aws.ec2.NATGateway
     properties:
-      client_config: *client_config
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
       resource_config:
         kwargs:
           ConnectivityType: public
@@ -412,8 +452,11 @@ node_templates:
     properties:
       resource_config:
         kwargs:
-          DestinationCidrBlock: '0.0.0.0/0'
-      client_config: *client_config
+          DestinationCidrBlock: 0.0.0.0/0
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
     relationships:
       - type: cloudify.relationships.contained_in
         target: private_route_table_01
@@ -428,8 +471,11 @@ node_templates:
     properties:
       resource_config:
         kwargs:
-          DestinationCidrBlock: '0.0.0.0/0'
-      client_config: *client_config
+          DestinationCidrBlock: 0.0.0.0/0
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
     relationships:
       - type: cloudify.relationships.contained_in
         target: private_route_table_02
@@ -443,15 +489,15 @@ node_templates:
     type: cloudify.nodes.aws.ec2.SecurityGroup
     properties:
       resource_config:
-        GroupName: { concat: [ 'EKS_Test_Group', { get_input: env_name } ] }
+        GroupName: { concat: [EKS_Test_Group, {get_input: env_name}] }
         Description: The group for EKS test.
-        VpcId: { get_attribute: [ vpc, aws_resource_id ]}
-      client_config: *client_config
+        VpcId: { get_attribute: [vpc, aws_resource_id] }
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
       Tags:
-        - Key:
-            concat:
-              - kubernetes.io/cluster/
-              - { get_input: env_name }
+        - Key: { concat: [kubernetes.io/cluster/, {get_input: env_name}] }
           Value: owned
     relationships:
       - type: cloudify.relationships.depends_on
@@ -460,16 +506,20 @@ node_templates:
   security_group_rules:
     type: cloudify.nodes.aws.ec2.SecurityGroupRuleIngress
     properties:
-      client_config: *client_config
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
       resource_config:
         kwargs:
           IpPermissions:
-            - IpProtocol: "-1"
+            - IpProtocol: '-1'
               FromPort: -1
               ToPort: -1
               IpRanges:
                 - CidrIp: 0.0.0.0/0
-              UserIdGroupPairs: [ { GroupId: { get_attribute: [ security_group, aws_resource_id ] } } ]
+              UserIdGroupPairs:
+                - GroupId: { get_attribute: [security_group, aws_resource_id] }
     relationships:
       - type: cloudify.relationships.contained_in
         target: security_group
@@ -481,18 +531,21 @@ node_templates:
         kwargs:
           name: { get_input: env_name }
           version: { get_input: kubernetes_version }
-          roleArn: { get_attribute: [ eks_service_iam_role, aws_resource_arn ] }
+          roleArn: { get_attribute: [eks_service_iam_role, aws_resource_arn] }
           resourcesVpcConfig:
             subnetIds:
-              - { get_attribute: [ private_subnet_01, aws_resource_id ] }
-              - { get_attribute: [ private_subnet_02, aws_resource_id ] }
-              - { get_attribute: [ public_subnet_01, aws_resource_id ] }
-              - { get_attribute: [ public_subnet_02, aws_resource_id ] }
+              - { get_attribute: [private_subnet_01, aws_resource_id] }
+              - { get_attribute: [private_subnet_02, aws_resource_id] }
+              - { get_attribute: [public_subnet_01, aws_resource_id] }
+              - { get_attribute: [public_subnet_02, aws_resource_id] }
             securityGroupIds:
-              - { get_attribute: [ security_group, aws_resource_id ] }
+              - { get_attribute: [security_group, aws_resource_id] }
             endpointPublicAccess: true
             endpointPrivateAccess: false
-      client_config: *client_config
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
       store_kube_config_in_runtime: true
     relationships:
       - type: cloudify.relationships.depends_on
@@ -529,17 +582,20 @@ node_templates:
             desiredSize: 1
           diskSize: 20
           subnets:
-            - { get_attribute: [ private_subnet_01, aws_resource_id ] }
-            - { get_attribute: [ private_subnet_02, aws_resource_id ] }
-            - { get_attribute: [ public_subnet_01, aws_resource_id ] }
-            - { get_attribute: [ public_subnet_02, aws_resource_id ] }
+            - { get_attribute: [private_subnet_01, aws_resource_id] }
+            - { get_attribute: [private_subnet_02, aws_resource_id] }
+            - { get_attribute: [public_subnet_01, aws_resource_id] }
+            - { get_attribute: [public_subnet_02, aws_resource_id] }
           instanceTypes:
             - t3.medium
           amiType: AL2_x86_64
-          nodeRole: { get_attribute: [ eks_nodegroup_iam_role, aws_resource_arn ] }
+          nodeRole: { get_attribute: [eks_nodegroup_iam_role, aws_resource_arn] }
           remoteAccess:
             ec2SshKey: { get_input: ssh_keypair }
-      client_config: *client_config
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
     relationships:
       - type: cloudify.relationships.depends_on
         target: eks_nodegroup_iam_role
@@ -551,8 +607,8 @@ node_templates:
   kubernetes_master:
     type: cloudify.kubernetes.nodes.Master
     properties:
-      configuration: &kubernetes_master_configuration
-        file_content: { get_attribute: [ eks_cluster, kubeconf ] }
+      configuration:
+        file_content: { get_attribute: [eks_cluster, kubeconf] }
     relationships:
       - type: cloudify.relationships.depends_on
         target: eks_node_group
@@ -563,7 +619,8 @@ node_templates:
     type: cloudify.nodes.kubernetes.resources.ServiceAccount
     properties:
       client_config:
-        configuration: *kubernetes_master_configuration
+        configuration:
+          file_content: { get_attribute: [eks_cluster, kubeconf] }
       definition:
         apiVersion: v1
         kind: ServiceAccount
@@ -582,7 +639,8 @@ node_templates:
     type: cloudify.nodes.kubernetes.resources.RoleBinding
     properties:
       client_config:
-        configuration: *kubernetes_master_configuration
+        configuration:
+          file_content: { get_attribute: [eks_cluster, kubeconf] }
       definition:
         apiVersion: rbac.authorization.k8s.io/v1
         kind: ClusterRoleBinding
@@ -610,12 +668,13 @@ node_templates:
     type: cloudify.nodes.kubernetes.resources.Secret
     properties:
       client_config:
-        configuration: *kubernetes_master_configuration
+        configuration:
+          file_content: { get_attribute: [eks_cluster, kubeconf] }
       definition:
         apiVersion: v1
         kind: Secret
         metadata:
-          name: { concat: [ { get_input: service_account_name }, -token ] }
+          name: { concat: [{get_input: service_account_name}, -token] }
           annotations:
             kubernetes.io/service-account.name: { get_input: service_account_name }
         type: kubernetes.io/service-account-token
@@ -629,7 +688,8 @@ node_templates:
     type: cloudify.nodes.kubernetes.resources.Secret
     properties:
       client_config:
-        configuration: *kubernetes_master_configuration
+        configuration:
+          file_content: { get_attribute: [eks_cluster, kubeconf] }
       definition:
         apiVersion: v1
         kind: Secret
@@ -651,8 +711,8 @@ node_templates:
           implementation: scripts/store_kube_token_and_config.py
           executor: central_deployment_agent
           inputs:
-            kube_token: { get_attribute: [ secret, kubernetes, data, token ] }
-            kube_config: { get_attribute: [ eks_cluster, kubeconf ] }
+            kube_token: { get_attribute: [secret, kubernetes, data, token] }
+            kube_config: { get_attribute: [eks_cluster, kubeconf] }
     relationships:
       - type: cloudify.relationships.depends_on
         target: secret
@@ -660,13 +720,24 @@ node_templates:
   helm_install:
     type: cloudify.nodes.helm.Binary
 
+  aws-ebs-csi-driver:
+    type: cloudify.nodes.helm.Repo
+    properties:
+      resource_config:
+        name: aws-ebs-csi-driver
+        repo_url: https://kubernetes-sigs.github.io/aws-ebs-csi-driver
+    relationships:
+      - target: helm_install
+        type: cloudify.helm.relationships.run_on_host
+
   release:
     type: cloudify.nodes.helm.Release
     properties:
       client_config:
-        configuration: *kubernetes_master_configuration
+        configuration:
+          file_content: { get_attribute: [eks_cluster, kubeconf] }
       resource_config:
-        name: "aws-ebs-csi-driver"
+        name: aws-ebs-csi-driver
         chart: aws-ebs-csi-driver/aws-ebs-csi-driver
         flags:
           - name: namespace
@@ -679,31 +750,52 @@ node_templates:
       - target: eks_node_group
         type: cloudify.relationships.depends_on
 
-  iam_assumable_role_ebs_csi:
-    type: cloudify.nodes.aws.iam.Role
+  eks_helper:
+    type: cloudify.nodes.EKSHelper
     properties:
-      client_config: *client_config
       resource_config:
-        RoleName: { get_attribute: [ eks_helper, role_name ] }
-        Path: !!str /service-role/
-        AssumeRolePolicyDocument:
-          Version: !!str '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Principal:
-                Federated: { get_attribute: [ eks_helper, federated ] }
-              Action: sts:AssumeRoleWithWebIdentity
-              Condition: { get_attribute: [ eks_helper, condition ] }
+        aws_region_name: { get_input: aws_region_name }
+        issuer: { get_attribute: [eks_cluster, resource, identity, oidc, issuer] }
+        account_id: { get_attribute: [eks_nodegroup_iam_role, account_id] }
     relationships:
       - type: cloudify.relationships.depends_on
-        target: eks_helper
+        target: release
+
+  ebs-csi-controller-sa:
+    type: cloudify.nodes.kubernetes.resources.ServiceAccount
+    properties:
+      use_external_resource: true
+      client_config:
+        configuration:
+          file_content: { get_attribute: [eks_cluster, kubeconf] }
+      definition:
+        apiVersion: v1
+        kind: ServiceAccount
+        metadata:
+          annotations:
+            meta.helm.sh/release-name: aws-ebs-csi-driver
+            meta.helm.sh/release-namespace: kube-system
+            eks.amazonaws.com/role-arn: { get_attribute: [iam_assumable_role_ebs_csi, aws_resource_arn] }
+          labels:
+            app.kubernetes.io/component: csi-driver
+            app.kubernetes.io/instance: aws-ebs-csi-driver
+            app.kubernetes.io/managed-by: Helm
+            app.kubernetes.io/name: aws-ebs-csi-driver
+            app.kubernetes.io/version: 1.13.0
+            helm.sh/chart: aws-ebs-csi-driver-2.13.0
+          name: ebs-csi-controller-sa
+          namespace: kube-system
+      options:
+        namespace: kube-system
     interfaces:
       cloudify.interfaces.lifecycle:
-        create:
-          implementation: aws.cloudify_aws.iam.resources.role.create
-          inputs:
-            modify_role_attribute_args:
-              - PolicyArn: arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy
+        start:
+          implementation: kubernetes.cloudify_kubernetes.tasks.resource_update
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: kubernetes_master
+      - type: cloudify.relationships.depends_on
+        target: iam_assumable_role_ebs_csi
 
   agent_key:
     type: cloudify.keys.nodes.RSAKey
@@ -719,6 +811,50 @@ node_templates:
           implementation: keys.cloudify_ssh_key.operations.create
           inputs:
             store_private_key_material: true
+capabilities:
+
+  endpoint:
+    description: The external endpoint of the application.
+    value: { get_attribute: [eks_cluster, kubeconf, clusters, 0, cluster, server] }
+
+  connection_details:
+    description: connection details
+    value:
+      file_content: { get_attribute: [eks_cluster, kubeconf] }
+outputs:
+
+  iam_assumable_role_ebs_csi:
+    type: cloudify.nodes.aws.iam.Role
+    properties:
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        region_name: { get_input: aws_region_name }
+      resource_config:
+        RoleName: { get_attribute: [eks_helper, role_name] }
+        Path: /service-role/
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Federated: { get_attribute: [eks_helper, federated] }
+              Action: sts:AssumeRoleWithWebIdentity
+              Condition: { get_attribute: [eks_helper, condition] }
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: eks_helper
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: aws.cloudify_aws.iam.resources.role.create
+          inputs:
+            modify_role_attribute_args:
+              - PolicyArn: arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy
+
+  endpoint:
+    description: The external endpoint of the application.
+    value: { get_attribute: [eks_cluster, kubeconf, clusters, 0, cluster, server] }
 
   sanity_pod:
     type: cloudify.nodes.kubernetes.resources.FileDefinedResource
@@ -726,8 +862,8 @@ node_templates:
       client_config:
         configuration:
           api_options:
-            host: { get_attribute: [eks_cluster, kubeconf, clusters, 0, cluster, server ] }
-            api_key: { get_attribute: [ store_token_and_kubeconfig, token ] }
+            host: { get_attribute: [eks_cluster, kubeconf, clusters, 0, cluster, server] }
+            api_key: { get_attribute: [store_token_and_kubeconfig, token] }
             debug: false
             verify_ssl: false
       validate_resource_status: true
@@ -751,75 +887,3 @@ node_templates:
         stop: {}
         delete: {}
         postdelete: {}
-
-  aws-ebs-csi-driver:
-    type: cloudify.nodes.helm.Repo
-    properties:
-      resource_config:
-        name: aws-ebs-csi-driver
-        repo_url: https://kubernetes-sigs.github.io/aws-ebs-csi-driver
-    relationships:
-      - target: helm_install
-        type: cloudify.helm.relationships.run_on_host
-
-  ebs-csi-controller-sa:
-    type: cloudify.nodes.kubernetes.resources.ServiceAccount
-    properties:
-      use_external_resource: true
-      client_config:
-        configuration: *kubernetes_master_configuration
-      definition:
-        apiVersion: v1
-        kind: ServiceAccount
-        metadata:
-          annotations:
-            meta.helm.sh/release-name: aws-ebs-csi-driver
-            meta.helm.sh/release-namespace: kube-system
-            eks.amazonaws.com/role-arn: { get_attribute: [ iam_assumable_role_ebs_csi, aws_resource_arn ] }
-          labels:
-            app.kubernetes.io/component: csi-driver
-            app.kubernetes.io/instance: aws-ebs-csi-driver
-            app.kubernetes.io/managed-by: Helm
-            app.kubernetes.io/name: aws-ebs-csi-driver
-            app.kubernetes.io/version: 1.13.0
-            helm.sh/chart: aws-ebs-csi-driver-2.13.0
-          name: ebs-csi-controller-sa
-          namespace: kube-system
-      options:
-        namespace: kube-system
-    interfaces:
-      cloudify.interfaces.lifecycle:
-        start:
-          implementation: kubernetes.cloudify_kubernetes.tasks.resource_update
-    relationships:
-      - type: cloudify.relationships.depends_on
-        target: kubernetes_master
-      - type: cloudify.relationships.depends_on
-        target: iam_assumable_role_ebs_csi
-
-  eks_helper:
-    type: cloudify.nodes.EKSHelper
-    properties:
-      resource_config:
-        aws_region_name: { get_input: aws_region_name }
-        issuer: { get_attribute: [ eks_cluster, resource, identity, oidc, issuer ] }
-        account_id: { get_attribute: [ eks_nodegroup_iam_role, account_id ] }
-    relationships:
-      - type: cloudify.relationships.depends_on
-        target: release
-
-capabilities:
-
-  endpoint:
-    description: 'The external endpoint of the application.'
-    value: { get_attribute: [eks_cluster, kubeconf, clusters, 0, cluster, server ] }
-
-  connection_details:
-    description: 'connection details'
-    value: *kubernetes_master_configuration
-
-outputs:
-
-  endpoint:
-    description: 'The external endpoint of the application.'
-    value: { get_attribute: [eks_cluster, kubeconf, clusters, 0, cluster, server ] }

@@ -1,16 +1,18 @@
 tosca_definitions_version: cloudify_dsl_1_4
-
 description: >
+
   This blueprint create a managed cluster.
 
 imports:
+
   - https://cloudify.co/spec/cloudify/6.4.0/types.yaml
   - plugin:cloudify-azure-plugin?version= >=3.3.0
   - plugin:cloudify-kubernetes-plugin?version= >=2.7.0
   - plugin:cloudify-utilities-plugin?version= >=1.22.1
 
 inputs:
-  # Azure account information
+
+
   subscription_id:
     display_label: Subscription Id
     type: string
@@ -47,17 +49,17 @@ inputs:
     description: Must be a single letter. Managed Cluster Name has length restrictions.
     default: a1
     constraints:
-      - pattern: '^[a-z][a-z0-9]{1,5}$'
+      - pattern: ^[a-z][a-z0-9]{1,5}$
 
   resource_group_name:
     display_label: Resource Group Name
     type: string
-    default: { concat: [ 'cfyaksrg', { get_input: env_name } ] }
+    default: { concat: [cfyaksrg, {get_input: env_name}] }
 
   managed_cluster_name:
     display_label: Managed Cluster Name
     type: string
-    default: { concat: [ 'cfyaks', { get_input: env_name } ] }
+    default: { concat: [cfyaks, {get_input: env_name}] }
 
   service_account_name:
     display_label: Service Account Name
@@ -73,41 +75,40 @@ inputs:
     display_label: Agent Key Name
     type: string
     default: agent_key
-
 dsl_definitions:
-  client_config: &azure_config
+
+  client_config:
     subscription_id: { get_input: subscription_id }
     tenant_id: { get_input: tenant_id }
     client_id: { get_input: client_id }
     client_secret: { get_input: client_secret }
 
-  resource_config: &resource_config
+  resource_config:
     location: { get_input: location }
     tags:
-      Name: { concat: [ "AKS_Test", { get_input: env_name } ] }
-      tier: "Testing"
-    kubernetes_version: ""
-    dns_prefix: { concat: [ "akstest", { get_input: env_name } ] }
+      Name: { concat: [AKS_Test, {get_input: env_name}] }
+      tier: Testing
+    kubernetes_version: ''
+    dns_prefix: { concat: [akstest, {get_input: env_name}] }
     agent_pool_profiles:
-      - name: { concat: [ "nodepool1", { get_input: env_name } ] }
+      - name: { concat: [nodepool1, {get_input: env_name}] }
         count: 3
-        vmSize: "Standard_DS2_v2"
-        osType: "Linux"
-        type: "VirtualMachineScaleSets"
+        vmSize: Standard_DS2_v2
+        osType: Linux
+        type: VirtualMachineScaleSets
         availabilityZones:
-          - "1"
-          - "2"
-          - "3"
-        # enableNodePublicIP: true
-        mode: "System"
+          - '1'
+          - '2'
+          - '3'
+        mode: System
     linux_profile:
-      adminUsername: "azureuser"
+      adminUsername: azureuser
       ssh:
         publicKeys:
           - keyData: { get_attribute: [agent_key, public_key_export] }
     network_profile:
-      loadBalancerSku: "standard"
-      outboundType: "loadBalancer"
+      loadBalancerSku: standard
+      outboundType: loadBalancer
       loadBalancerProfile:
         managedOutboundIPs:
           count: 2
@@ -119,20 +120,62 @@ dsl_definitions:
 
 node_templates:
 
+
   resource_group:
     type: cloudify.nodes.azure.ResourceGroup
     properties:
       name: { get_input: resource_group_name }
       location: { get_input: location }
-      client_config: *azure_config
+      client_config:
+        subscription_id: { get_input: subscription_id }
+        tenant_id: { get_input: tenant_id }
+        client_id: { get_input: client_id }
+        client_secret: { get_input: client_secret }
 
   managed_cluster:
     type: cloudify.nodes.azure.compute.ManagedCluster
     properties:
       resource_group: { get_input: resource_group_name }
       name: { get_input: managed_cluster_name }
-      resource_config: *resource_config
-      client_config: *azure_config
+      resource_config:
+        location: { get_input: location }
+        tags:
+          Name: { concat: [AKS_Test, {get_input: env_name}] }
+          tier: Testing
+        kubernetes_version: ''
+        dns_prefix: { concat: [akstest, {get_input: env_name}] }
+        agent_pool_profiles:
+          - name: { concat: [nodepool1, {get_input: env_name}] }
+            count: 3
+            vmSize: Standard_DS2_v2
+            osType: Linux
+            type: VirtualMachineScaleSets
+            availabilityZones:
+              - '1'
+              - '2'
+              - '3'
+            mode: System
+        linux_profile:
+          adminUsername: azureuser
+          ssh:
+            publicKeys:
+              - keyData: { get_attribute: [agent_key, public_key_export] }
+        network_profile:
+          loadBalancerSku: standard
+          outboundType: loadBalancer
+          loadBalancerProfile:
+            managedOutboundIPs:
+              count: 2
+        service_principal_profile:
+          clientId: { get_input: client_id }
+          secret: { get_input: client_secret }
+        addon_profiles: {}
+        enable_rbac: true
+      client_config:
+        subscription_id: { get_input: subscription_id }
+        tenant_id: { get_input: tenant_id }
+        client_id: { get_input: client_id }
+        client_secret: { get_input: client_secret }
       store_kube_config_in_runtime: true
     relationships:
       - type: cloudify.relationships.azure.contained_in_resource_group
@@ -140,27 +183,12 @@ node_templates:
       - type: cloudify.relationships.depends_on
         target: agent_key
 
-  agent_key:
-    type: cloudify.keys.nodes.RSAKey
-    properties:
-      resource_config:
-        key_name: { get_input: agent_key_name }
-        openssh_format: true
-      use_secret_store: true
-      use_secrets_if_exist: true
-    interfaces:
-      cloudify.interfaces.lifecycle:
-        create:
-          implementation: keys.cloudify_ssh_key.operations.create
-          inputs:
-            store_private_key_material: true
-
   new_service_account:
     type: cloudify.nodes.kubernetes.resources.ServiceAccount
     properties:
       client_config:
-        configuration: &kubernetes_master_configuration
-          file_content: { get_attribute: [ managed_cluster, kubeconf ] }
+        configuration:
+          file_content: { get_attribute: [managed_cluster, kubeconf] }
       definition:
         apiVersion: v1
         kind: ServiceAccount
@@ -177,7 +205,8 @@ node_templates:
     type: cloudify.nodes.kubernetes.resources.RoleBinding
     properties:
       client_config:
-        configuration: *kubernetes_master_configuration
+        configuration:
+          file_content: { get_attribute: [managed_cluster, kubeconf] }
       definition:
         apiVersion: rbac.authorization.k8s.io/v1
         kind: ClusterRoleBinding
@@ -197,6 +226,30 @@ node_templates:
       - type: cloudify.relationships.depends_on
         target: managed_cluster
 
+  secret:
+    type: cloudify.nodes.kubernetes.resources.Secret
+    properties:
+      client_config:
+        configuration:
+          file_content: { get_attribute: [managed_cluster, kubeconf] }
+      definition:
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: { concat: [{get_input: service_account_name}, -token] }
+          annotations:
+            kubernetes.io/service-account.name: { get_input: service_account_name }
+        type: kubernetes.io/service-account-token
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: new_role_binding
+      - type: cloudify.relationships.depends_on
+        target: new_service_account
+
+  endpoint:
+    description: The external endpoint of the application.
+    value: { get_attribute: [managed_cluster, kubeconf, clusters, 0, cluster, server] }
+
   store_token:
     type: cloudify.nodes.Root
     interfaces:
@@ -205,7 +258,7 @@ node_templates:
           implementation: scripts/store_kube_token.py
           executor: central_deployment_agent
           inputs:
-            kube_token: {get_attribute: [secret, kubernetes, data, token ]}
+            kube_token: { get_attribute: [secret, kubernetes, data, token] }
     relationships:
       - type: cloudify.relationships.depends_on
         target: secret
@@ -216,8 +269,8 @@ node_templates:
       client_config:
         configuration:
           api_options:
-            host: { get_attribute: [managed_cluster, kubeconf, clusters, 0, cluster, server ] }
-            api_key: { get_attribute: [ store_token, token ] }
+            host: { get_attribute: [managed_cluster, kubeconf, clusters, 0, cluster, server] }
+            api_key: { get_attribute: [store_token, token] }
             debug: false
             verify_ssl: false
       validate_resource_status: true
@@ -240,37 +293,28 @@ node_templates:
         delete: {}
         postdelete: {}
 
-  secret:
-    type: cloudify.nodes.kubernetes.resources.Secret
-    properties:
-      client_config:
-        configuration: *kubernetes_master_configuration
-      definition:
-        apiVersion: v1
-        kind: Secret
-        metadata:
-          name: { concat: [ { get_input: service_account_name }, -token ] }
-          annotations:
-            kubernetes.io/service-account.name: { get_input: service_account_name }
-        type: kubernetes.io/service-account-token
-    relationships:
-      - type: cloudify.relationships.depends_on
-        target: new_role_binding
-      - type: cloudify.relationships.depends_on
-        target: new_service_account
-
-capabilities:
-
   endpoint:
-    'description': 'The external endpoint of the application.'
-    value: { get_attribute: [managed_cluster, kubeconf, clusters, 0, cluster, server ] }
+    description: The external endpoint of the application.
+    value: { get_attribute: [managed_cluster, kubeconf, clusters, 0, cluster, server] }
 
   connection_details:
-    description: 'connection details'
-    value: *kubernetes_master_configuration
-
+    description: connection details
+    value:
+      file_content: { get_attribute: [managed_cluster, kubeconf] }
 outputs:
 
-  endpoint:
-    description: 'The external endpoint of the application.'
-    value: { get_attribute: [managed_cluster, kubeconf, clusters, 0, cluster, server ] }
+  agent_key:
+    type: cloudify.keys.nodes.RSAKey
+    properties:
+      resource_config:
+        key_name: { get_input: agent_key_name }
+        openssh_format: true
+      use_secret_store: true
+      use_secrets_if_exist: true
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: keys.cloudify_ssh_key.operations.create
+          inputs:
+            store_private_key_material: true
+capabilities:

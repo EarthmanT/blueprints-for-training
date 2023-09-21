@@ -1,10 +1,10 @@
 tosca_definitions_version: cloudify_dsl_1_4
-
 description: >
-  This blueprint creates infrastructure on AWS using Terraform.
-  Then runs ansible playbook that installs an application on top of it.
+
+  This blueprint creates infrastructure on AWS using Terraform. Then runs ansible playbook that installs an application on top of it.
 
 imports:
+
   - https://cloudify.co/spec/cloudify/6.4.0/types.yaml
   - plugin:cloudify-terraform-plugin?version= >=0.15.0
   - plugin:cloudify-utilities-plugin?version= >=1.22.1
@@ -13,25 +13,49 @@ imports:
 
 inputs:
 
+
   agent_user:
     description: >
       The username of the agent running on the instance created from the image.
     type: string
-    default: 'ubuntu'
+    default: ubuntu
 
   aws_region_name:
     type: string
-    default: 'us-east-1'
+    default: us-east-1
 
   aws_zone_name:
     type: string
-    default: { concat: [ { get_input: aws_region_name }, 'd' ] }
+    default: { concat: [{get_input: aws_region_name}, d] }
 
   agent_key_name:
     type: string
     default: agent_key
 
 node_templates:
+
+
+  terraform:
+    type: cloudify.nodes.terraform
+    properties:
+      resource_config:
+        use_existing_resource: false
+
+  agent_key:
+    type: cloudify.keys.nodes.RSAKey
+    properties:
+      resource_config:
+        key_name: { get_input: agent_key_name }
+        openssh_format: true
+      use_secret_store: true
+      use_secrets_if_exist: true
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: keys.cloudify_ssh_key.operations.create
+          inputs:
+            store_private_key_material: true
+outputs:
 
   vm:
     type: cloudify.nodes.terraform.Module
@@ -58,33 +82,8 @@ node_templates:
           implementation: scripts/terraform/expose_ip.py
           executor: central_deployment_agent
           inputs:
-            ip: { get_attribute: [ SELF, resources, eip, instances, 0, attributes, public_ip ] }
-
-  terraform:
-    type: cloudify.nodes.terraform
-    properties:
-      resource_config:
-        use_existing_resource: false
-
-  agent_key:
-    type: cloudify.keys.nodes.RSAKey
-    properties:
-      resource_config:
-        key_name: { get_input: agent_key_name }
-        openssh_format: true
-      use_secret_store: true
-      use_secrets_if_exist: true
-    interfaces:
-      cloudify.interfaces.lifecycle:
-        create:
-          implementation: keys.cloudify_ssh_key.operations.create
-          inputs:
-            store_private_key_material: true
-
-outputs:
+            ip: { get_attribute: [SELF, resources, eip, instances, 0, attributes, public_ip] }
 
   application_endpoint:
     description: The external endpoint of the application.
-    value: { concat: [ 'http://',
-                       { get_attribute: [ vm, resources, eip, instances, 0, attributes, public_ip ] },
-                       ':80' ] }
+    value: { concat: [http://, {get_attribute: [vm, resources, eip, instances, 0, attributes, public_ip]}, :80] }
