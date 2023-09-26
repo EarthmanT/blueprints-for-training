@@ -88,7 +88,7 @@ node_templates:
           vpc_cidr: { get_input: vpc_cidr }
           subnet_cidr: { get_input: subnet_cidr }
     relationships:
-      - type: cloudify.terraform.relationships.run_on_host
+      - type: cloudify.relationships.terraform.run_on_host
         target: terraform
 
   instance:
@@ -107,7 +107,7 @@ node_templates:
           security_group_id: { get_attribute: [shared_resources, outputs, security_group_id, value] }
           subnet_id: { get_attribute: [shared_resources, outputs, subnet_id, value] }
     relationships:
-      - type: cloudify.terraform.relationships.run_on_host
+      - type: cloudify.relationships.terraform.run_on_host
         target: terraform
       - type: cloudify.relationships.connected_to
         target: shared_resources

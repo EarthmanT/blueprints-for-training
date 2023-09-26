@@ -105,7 +105,7 @@ node_templates:
           prefix: { get_input: prefix }
           region: { get_input: gcp_region_name }
     relationships:
-      - type: cloudify.terraform.relationships.run_on_host
+      - type: cloudify.relationships.terraform.run_on_host
         target: terraform
 
   instance:
@@ -126,7 +126,7 @@ node_templates:
           zone: { get_input: zone }
           network: { get_attribute: [shared_resources, outputs, network, value] }
     relationships:
-      - type: cloudify.terraform.relationships.run_on_host
+      - type: cloudify.relationships.terraform.run_on_host
         target: terraform
       - type: cloudify.relationships.connected_to
         target: shared_resources

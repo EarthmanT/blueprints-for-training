@@ -117,7 +117,7 @@ node_templates:
           subscription_id: { get_secret: azure_subscription_id }
           tenant_id: { get_secret: azure_tenant_id }
     relationships:
-      - type: cloudify.terraform.relationships.run_on_host
+      - type: cloudify.relationships.terraform.run_on_host
         target: terraform
 
   vm:
@@ -140,7 +140,7 @@ node_templates:
           subscription_id: { get_secret: azure_subscription_id }
           tenant_id: { get_secret: azure_tenant_id }
     relationships:
-      - type: cloudify.terraform.relationships.run_on_host
+      - type: cloudify.relationships.terraform.run_on_host
         target: terraform
       - type: cloudify.relationships.connected_to
         target: shared_resources

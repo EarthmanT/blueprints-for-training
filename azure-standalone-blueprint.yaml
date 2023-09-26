@@ -86,7 +86,7 @@ node_templates:
           location: templates/tf-azure-vpc-master.zip
     relationships:
       - target: terraform
-        type: cloudify.terraform.relationships.run_on_host
+        type: cloudify.relationships.terraform.run_on_host
       - target: prefix
         type: cloudify.relationships.depends_on
 labels:

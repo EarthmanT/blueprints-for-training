@@ -79,7 +79,7 @@ node_templates:
           prefix: { get_input: prefix }
     relationships:
       - target: terraform
-        type: cloudify.terraform.relationships.run_on_host
+        type: cloudify.relationships.terraform.run_on_host
       - target: agent_key
         type: cloudify.relationships.depends_on
 
