@@ -56,8 +56,10 @@ node_templates:
         type: cloudify.relationships.depends_on
       - target: terraform
         type: cloudify.relationships.terraform.run_on_host
+
 capabilities:
 
   bucket_url:
     description: The Bucket URL.
-    value: { concat: [https://, {get_attribute: [terraform_module, resources, bucket, instances, 0, attributes, bucket_regional_domain_name]}] }
+    value: { concat: ['https://', {get_attribute: [terraform_module, resources, bucket, instances, 0, attributes, bucket_regional_domain_name]}] }
+

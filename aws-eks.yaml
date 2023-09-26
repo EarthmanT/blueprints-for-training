@@ -931,6 +931,7 @@ node_templates:
           implementation: keys.cloudify_ssh_key.operations.create
           inputs:
             store_private_key_material: true
+
 capabilities:
 
   endpoint:
@@ -941,8 +942,3 @@ capabilities:
     description: connection details
     value:
       file_content: { get_attribute: [eks_cluster, kubeconf] }
-outputs:
-
-  endpoint:
-    description: The external endpoint of the application.
-    value: { get_attribute: [eks_cluster, kubeconf, clusters, 0, cluster, server] }

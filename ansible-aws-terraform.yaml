@@ -1,4 +1,5 @@
 tosca_definitions_version: cloudify_dsl_1_4
+
 description: This blueprint creates infrastructure on AWS using Terraform. Then runs ansible playbook that installs an application on top of it.
 
 imports:
@@ -80,7 +81,8 @@ node_templates:
           implementation: keys.cloudify_ssh_key.operations.create
           inputs:
             store_private_key_material: true
-outputs:
+
+capabilities:
 
   application_endpoint:
     description: The external endpoint of the application.

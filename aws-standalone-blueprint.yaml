@@ -120,12 +120,14 @@ node_templates:
         type: cloudify.relationships.terraform.run_on_host
       - target: prefix
         type: cloudify.relationships.depends_on
+
 labels:
 
   obj-type:
     values:
       - aws
       - terraform
+
 capabilities:
 
   vpc_id:

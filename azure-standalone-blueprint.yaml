@@ -95,6 +95,7 @@ labels:
     values:
       - aws
       - terraform
+
 capabilities:
 
   rg_id:

@@ -129,6 +129,7 @@ node_templates:
           implementation: keys.cloudify_ssh_key.operations.create
           inputs:
             store_private_key_material: true
+
 capabilities:
 
   name:

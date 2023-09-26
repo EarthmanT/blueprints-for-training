@@ -131,19 +131,22 @@ node_templates:
                         ansible_ssh_common_args: -o StrictHostKeyChecking=no
                 run_data:
                   message: { get_input: website_message }
+
 groups:
 
   server_and_app:
     members:
       - instance
       - app
+
 policies:
 
   scaling_policy:
     type: cloudify.policies.scaling
     targets:
       - server_and_app
-outputs:
+
+capabilities:
 
   instance_ips:
     description: IP addresses of any deployed instances

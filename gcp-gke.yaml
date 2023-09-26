@@ -1,4 +1,5 @@
 tosca_definitions_version: cloudify_dsl_1_4
+
 description: This blueprint create a managed cluster.
 
 imports:
@@ -27,6 +28,7 @@ inputs:
     display_label: Env Name
     type: string
     default: { get_input: resource_prefix }
+
 dsl_definitions:
 
   client_config:
@@ -109,12 +111,8 @@ node_templates:
         stop: {}
         delete: {}
         postdelete: {}
-capabilities:
 
-  endpoint:
-    description: The external endpoint of the application.
-    value: { concat: [https://, {get_attribute: [kubernetes-cluster-attributes, endpoint]}] }
-outputs:
+capabilities:
 
   endpoint:
     description: The external endpoint of the application.

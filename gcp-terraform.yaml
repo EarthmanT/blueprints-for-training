@@ -1,4 +1,5 @@
 tosca_definitions_version: cloudify_dsl_1_4
+
 description: This blueprint creates infrastructure on GCP using Terraform.
 
 imports:
@@ -90,6 +91,7 @@ node_templates:
           implementation: keys.cloudify_ssh_key.operations.create
           inputs:
             store_private_key_material: true
+
 capabilities:
 
   name:

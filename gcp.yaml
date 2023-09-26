@@ -161,13 +161,15 @@ groups:
     members:
       - instance
       - app
+
 policies:
 
   scaling_policy:
     type: cloudify.policies.scaling
     targets:
       - server_and_app
-outputs:
+
+capabilities:
 
   instance_ips:
     description: IP addresses of any deployed instances

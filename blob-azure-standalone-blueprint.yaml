@@ -59,6 +59,7 @@ node_templates:
         type: cloudify.relationships.depends_on
       - target: terraform
         type: cloudify.relationships.terraform.run_on_host
+
 capabilities:
 
   bucket_url:
