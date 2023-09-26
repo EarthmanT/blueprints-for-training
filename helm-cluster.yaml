@@ -54,7 +54,7 @@ inputs:
 
   repo_url:
     display_label: Repo Url
-    description: URL of the repo to add. 
+    description: URL of the repo to add.
     type: string
     default: https://www.kleinloog.ch/hello-helm/
 

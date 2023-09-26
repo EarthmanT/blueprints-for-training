@@ -240,6 +240,8 @@ node_templates:
         target: new_role_binding
       - type: cloudify.relationships.depends_on
         target: new_service_account
+      - type: cloudify.relationships.depends_on
+        target: managed_cluster
 
   store_token:
     type: cloudify.nodes.Root
@@ -270,6 +272,8 @@ node_templates:
     relationships:
       - type: cloudify.relationships.depends_on
         target: store_token
+      - type: cloudify.relationships.depends_on
+        target: managed_cluster
     interfaces:
       cloudify.interfaces.lifecycle:
         precreate: {}

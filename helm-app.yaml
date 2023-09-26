@@ -17,6 +17,7 @@ inputs:
     type: string
     description: Chart package name to deploy from repo.
     default: postgresql
+    display_label: Chart Name
 
   helm_installation_source:
     display_label: Helm Installation Source
