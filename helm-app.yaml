@@ -2,14 +2,13 @@ tosca_definitions_version: cloudify_dsl_1_4
 description: Cloudify Helm-eks blueprint. Creates EKS cluster and installs helm chart on top of it.
 
 imports:
-
-  - https://cloudify.co/spec/cloudify/6.4.0/types.yaml
+  - cloudify/types/types.yaml
   - plugin:cloudify-helm-plugin
 
 inputs:
 
-
   repo_name:
+    display_label: Repo Name
     description: >
       Name of the repo to add.
     type: string
@@ -21,23 +20,25 @@ inputs:
     default: postgresql
 
   helm_installation_source:
+    display_label: Helm Installation Source
     description: >
       Helm download link.
     type: string
     default: https://get.helm.sh/helm-v3.3.1-linux-amd64.tar.gz
 
   repo_url:
+    display_label: Repo Url
     description: >
       URL of the repo to add. For example: https://kubernetes-charts.storage.googleapis.com/
     type: string
     default: https://charts.bitnami.com/bitnami
 
   cluster_deployment:
+    display_label: Cluster Deployment
     type: string
     description: The name of the deployment that exposes the connection details to a cluster.
 
 node_templates:
-
 
   helm_install:
     type: cloudify.nodes.helm.Binary
@@ -68,4 +69,3 @@ node_templates:
         type: cloudify.helm.relationships.run_on_host
       - target: repo
         type: cloudify.relationships.depends_on
-

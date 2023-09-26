@@ -1,18 +1,15 @@
 tosca_definitions_version: cloudify_dsl_1_4
-description: >
-
-  This blueprint creates infrastructure on IBM Cloud using Terraform.
+description: This blueprint creates infrastructure on IBM Cloud using Terraform.
 
 imports:
-
-  - https://cloudify.co/spec/cloudify/6.4.0/types.yaml
+  - cloudify/types/types.yaml
   - plugin:cloudify-terraform-plugin?version= >=0.15.0
   - plugin:cloudify-utilities-plugin?version= >=1.22.1
 
 inputs:
 
-
   region_name:
+    display_label: Region Name
     type: string
     default: eu-de
     constraints:
@@ -28,32 +25,37 @@ inputs:
           - jp-tok
 
   image:
+    display_label: Image
     type: string
     description: IMB Cloud Image name
     default: ibm-centos-7-6-minimal-amd64-2
 
   agent_user:
+    display_label: Agent User
     type: string
     default: centos
 
   agent_key_name:
+    display_label: Agent Key Name
     type: string
     default: agent_key
 
   location:
+    display_label: Location
     type: string
     default: https://github.com/cloudify-community/tf-source/archive/refs/heads/main.zip
 
   source_path:
+    display_label: Source Path
     type: string
     default: template/modules/ibm
 
   prefix:
+    display_label: Prefix
     type: string
     default: cfy
 
 node_templates:
-
 
   terraform:
     type: cloudify.nodes.terraform
@@ -104,4 +106,3 @@ capabilities:
   key_content:
     description: Private agent key
     value: { get_attribute: [agent_key, private_key_export] }
-

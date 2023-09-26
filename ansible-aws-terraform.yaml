@@ -4,8 +4,7 @@ description: >
   This blueprint creates infrastructure on AWS using Terraform. Then runs ansible playbook that installs an application on top of it.
 
 imports:
-
-  - https://cloudify.co/spec/cloudify/6.4.0/types.yaml
+  - cloudify/types/types.yaml
   - plugin:cloudify-terraform-plugin?version= >=0.15.0
   - plugin:cloudify-utilities-plugin?version= >=1.22.1
   - plugin:cloudify-ansible-plugin
@@ -86,5 +85,4 @@ outputs:
 
   application_endpoint:
     description: The external endpoint of the application.
-    value: { concat: [http://, {get_attribute: [vm, resources, eip, instances, 0, attributes, public_ip]}, :80] }
-
+    value: { concat: ['http://', {get_attribute: [vm, resources, eip, instances, 0, attributes, public_ip]}, ':80'] }

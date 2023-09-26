@@ -1,17 +1,13 @@
 tosca_definitions_version: cloudify_dsl_1_4
-description: >
-
-  This blueprint create a managed cluster.
+description: This blueprint create a managed cluster.
 
 imports:
-
-  - https://cloudify.co/spec/cloudify/6.4.0/types.yaml
+  - cloudify/types/types.yaml
   - plugin:cloudify-azure-plugin?version= >=3.3.0
   - plugin:cloudify-kubernetes-plugin?version= >=2.7.0
   - plugin:cloudify-utilities-plugin?version= >=1.22.1
 
 inputs:
-
 
   subscription_id:
     display_label: Subscription Id
@@ -119,7 +115,6 @@ dsl_definitions:
     enable_rbac: true
 
 node_templates:
-
 
   resource_group:
     type: cloudify.nodes.azure.ResourceGroup
@@ -318,4 +313,3 @@ outputs:
   endpoint:
     description: The external endpoint of the application.
     value: { get_attribute: [managed_cluster, kubeconf, clusters, 0, cluster, server] }
-
