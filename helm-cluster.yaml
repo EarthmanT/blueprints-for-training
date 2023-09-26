@@ -9,16 +9,14 @@ inputs:
 
   infra_archive:
     display_label: Infra Archive
-    description: >
-      URL of EKS example zip file.
+    description: URL of EKS example zip file.
     type: string
     default: https://github.com/cloudify-community/blueprint-examples/releases/download/latest/kubernetes-aws-eks.zip
 
   infra_exists:
     display_label: Infra Exists
     type: string
-    description: >
-      Whether a getting eks example blueprint has already been uploaded to the manager or not.
+    description: Whether a getting eks example blueprint has already been uploaded to the manager or not.
     default: false
 
   infra_deployment_id:
@@ -38,29 +36,25 @@ inputs:
 
   repo_name:
     display_label: Repo Name
-    description: >
-      Name of the repo to add.
+    description: Name of the repo to add.
     type: string
     default: hello
 
   chart_name:
     display_label: Chart Name
     type: string
-    description: >
-      Chart package name to deploy from repo.
+    description: Chart package name to deploy from repo.
     default: hello
 
   helm_installation_source:
     display_label: Helm Installation Source
-    description: >
-      Helm download link.
+    description: Helm download link.
     type: string
     default: https://get.helm.sh/helm-v3.3.1-linux-amd64.tar.gz
 
   repo_url:
     display_label: Repo Url
-    description: >
-      URL of the repo to add. For example: https://kubernetes-charts.storage.googleapis.com/
+    description: URL of the repo to add. 
     type: string
     default: https://www.kleinloog.ch/hello-helm/
 

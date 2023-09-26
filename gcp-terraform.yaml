@@ -22,8 +22,7 @@ inputs:
 
   agent_user:
     display_label: Agent User
-    description: >
-      The username of the agent running on the instance created from the image.
+    description: The username of the agent running on the instance created from the image.
     type: string
     default: ubuntu
 
@@ -31,12 +30,6 @@ inputs:
     display_label: Zone Name
     type: string
     default: { get_secret: gcp_zone }
-
-  image:
-    description: GCP Image reference
-    default:
-      project: ubuntu-os-cloud
-      family: ubuntu-1804-lts
 
   agent_key_name:
     display_label: Agent Key Name
@@ -100,6 +93,7 @@ node_templates:
 capabilities:
 
   name:
+    description: The VM Name
     value: { get_attribute: [cloud_resources, resources, vm, instances, 0, attributes, name] }
 
   endpoint:

@@ -16,8 +16,7 @@ inputs:
   resource_prefix:
     display_label: Resource Prefix
     type: string
-    description: >
-      If not provided, it will be auto-generated.
+    description: If not provided, it will be auto-generated.
     default: ''
     constraints:
       - pattern: (^ *$)|(^[a-zA-Z][a-zA-Z0-9]+$)
@@ -63,4 +62,5 @@ node_templates:
 capabilities:
 
   bucket_url:
+    description: The Bucket URL.
     value: { get_attribute: [terraform_module, resources, blob, instances, 0, attributes, id] }

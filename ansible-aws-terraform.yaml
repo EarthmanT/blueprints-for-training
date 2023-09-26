@@ -1,7 +1,5 @@
 tosca_definitions_version: cloudify_dsl_1_4
-description: >
-
-  This blueprint creates infrastructure on AWS using Terraform. Then runs ansible playbook that installs an application on top of it.
+description: This blueprint creates infrastructure on AWS using Terraform. Then runs ansible playbook that installs an application on top of it.
 
 imports:
   - cloudify/types/types.yaml
@@ -14,8 +12,7 @@ inputs:
 
   agent_user:
     display_label: Agent User
-    description: >
-      The username of the agent running on the instance created from the image.
+    description: The username of the agent running on the instance created from the image.
     type: string
     default: ubuntu
 

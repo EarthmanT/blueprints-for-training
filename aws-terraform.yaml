@@ -10,8 +10,7 @@ inputs:
 
   agent_user:
     display_label: Agent User
-    description: >
-      The username of the agent running on the instance created from the image.
+    description: The username of the agent running on the instance created from the image.
     type: string
     default: centos
 

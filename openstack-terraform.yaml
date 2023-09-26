@@ -11,10 +11,6 @@ inputs:
   auth_url:
     display_label: Auth Url
     type: string
-    description: >
-      OpenStack authentication URL (Keystone v3 endpoint).
-
-      Example: https://example.com:13000/v3/
     default: { get_secret: openstack_auth_url }
 
   application_credential_id:
@@ -43,20 +39,10 @@ inputs:
 
   flavor:
     display_label: Flavor
-    description: >
-      Compute flavor name to use.
-
-      Example: t1.small
-
-      Command: `openstack flavor list`
     type: string
 
   image:
     display_label: Image
-    description: >
-      Glance image name to use.
-
-      Command: `openstack image list`
     type: string
 
   insecure:
@@ -67,8 +53,7 @@ inputs:
 
   agent_user:
     display_label: Agent User
-    description: >
-      The username of the agent running on the instance created from the image.
+    description: The username of the agent running on the instance created from the image.
     type: string
     default: ubuntu
 
@@ -140,6 +125,7 @@ node_templates:
 capabilities:
 
   name:
+    description: The VM Name.
     value: { get_attribute: [cloud_resources, resources, vm, instances, 0, attributes, name] }
 
   endpoint:

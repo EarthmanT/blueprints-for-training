@@ -68,16 +68,6 @@ inputs:
           - swedencentral
           - swedensouth
 
-  image:
-    display_label: Image
-    type: list
-    description: Azure Image reference
-    default:
-      publisher: Canonical
-      offer: UbuntuServer
-      sku: 18.04-LTS
-      version: latest
-
   agent_key_name:
     display_label: Agent Key Name
     type: string

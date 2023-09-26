@@ -9,27 +9,24 @@ inputs:
 
   repo_name:
     display_label: Repo Name
-    description: >
-      Name of the repo to add.
+    description: Name of the repo to add.
     type: string
     default: bitnami
 
   chart_name:
-    description: >
-      Chart package name to deploy from repo.
+    type: string
+    description: Chart package name to deploy from repo.
     default: postgresql
 
   helm_installation_source:
     display_label: Helm Installation Source
-    description: >
-      Helm download link.
+    description: Helm download link.
     type: string
     default: https://get.helm.sh/helm-v3.3.1-linux-amd64.tar.gz
 
   repo_url:
     display_label: Repo Url
-    description: >
-      URL of the repo to add. For example: https://kubernetes-charts.storage.googleapis.com/
+    description: URL of the repo to add.
     type: string
     default: https://charts.bitnami.com/bitnami
 

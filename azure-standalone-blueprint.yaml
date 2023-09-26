@@ -98,30 +98,23 @@ labels:
 capabilities:
 
   rg_id:
-    description: >
-      Azure ID of the Resource Group
+    description: Azure ID of the Resource Group
     value: { get_attribute: [terraform_module, resources, rg, instances, 0, attributes, name] }
 
   vn_id:
-    description: >
-      Azure ID of the Virtual Network
+    description: Azure ID of the Virtual Network
     value: { get_attribute: [terraform_module, resources, vnet, instances, 0, attributes, name] }
 
   subnet_ids:
-    description: >
-      Azure ID's of subnets
+    description: Azure ID's of subnets
     value:
       - { get_attribute: [terraform_module, resources, subnet_1, instances, 0, attributes, name] }
       - { get_attribute: [terraform_module, resources, subnet_2, instances, 0, attributes, name] }
 
   agents_security_group_id:
-    description: >
-      Azure ID of a security group that allows Cloudify Manager to access
-
-      VM's via SSH
+    description: Azure ID of a security group that allows Cloudify Manager to access VM's via SSH
     value: { get_attribute: [terraform_module, resources, sg, instances, 0, attributes, name] }
 
   sa_id:
-    description: >
-      Azure ID of the Storage Account
+    description: Azure ID of the Storage Account
     value: { get_attribute: [terraform_module, resources, sa, instances, 0, attributes, name] }

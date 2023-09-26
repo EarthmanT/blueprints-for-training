@@ -39,8 +39,7 @@ inputs:
   agent_user:
     display_label: Agent User
     type: string
-    description: >
-      The username of the agent running on the instance created from the image.
+    description: The username of the agent running on the instance created from the image.
     default: ec2-user
 
   agent_key_name:

@@ -59,4 +59,5 @@ node_templates:
 capabilities:
 
   bucket_url:
+    description: The Bucket URL.
     value: { concat: [https://, {get_attribute: [terraform_module, resources, bucket, instances, 0, attributes, bucket_regional_domain_name]}] }
