@@ -2,7 +2,7 @@ tosca_definitions_version: cloudify_dsl_1_4
 
 imports:
 
-  - https://cloudify.co/spec/cloudify/6.4.0/types.yaml
+  - cloudify/types/types.yaml
   - plugin:cloudify-terraform-plugin
   - plugin:cloudify-ansible-plugin
 
@@ -10,6 +10,7 @@ inputs:
 
 
   gcp_region_name:
+    display_label: Gcp Region Name
     type: string
     description: GCP Region to deploy instances into
     default: us-east1
@@ -46,34 +47,41 @@ inputs:
           - us-west4
 
   zone:
+    display_label: Zone
     type: string
     description: The GCP zone to deploy the instance into
     default: { concat: [{get_input: gcp_region_name}, -b] }
 
   prefix:
+    display_label: Prefix
     type: string
     description: A prefix to add to names of deployed resources
     default: cfy
 
   project:
+    display_label: Project
     type: string
     description: Name of the GCP project to deploy resources into
 
   instance_type:
+    display_label: Instance Type
     type: string
     description: GCP instance type to deploy (e.g., e2-small)
     default: e2-small
 
   public_key_content:
+    display_label: Public Key Content
     type: string
     description: Contents of a public key. The corresponding private key must be in the secret store.
 
   admin_user:
+    display_label: Admin User
     type: string
     description: User created on GCP instance
     default: centos
 
   website_message:
+    display_label: Website Message
     type: string
     description: A message to display on the home page of the deployed web server
     default: Welcome to NGINX, deployed by Cloudify
@@ -86,18 +94,6 @@ node_templates:
     properties:
       resource_config:
         installation_source: https://releases.hashicorp.com/terraform/1.1.4/terraform_1.1.4_linux_amd64.zip
-
-  server_and_app:
-    members:
-      - instance
-      - app
-policies:
-
-  scaling_policy:
-    type: cloudify.policies.scaling
-    targets:
-      - server_and_app
-outputs:
 
   shared_resources:
     type: cloudify.nodes.terraform.Module
@@ -112,17 +108,31 @@ outputs:
           prefix: { get_input: prefix }
           region: { get_input: gcp_region_name }
     relationships:
-      - type: cloudify.terraform.relationships.run_on_host
+      - type: cloudify.relationships.terraform.run_on_host
         target: terraform
 
-  instance_ips:
-    description: IP addresses of any deployed instances
-    value:
-      get_attributes_list:
-        - instance
-        - outputs
-        - ip
-        - value
+  instance:
+    type: cloudify.nodes.terraform.Module
+    properties:
+      resource_config:
+        source:
+          location: https://github.com/cloudify-community/tf-ansible-source/archive/refs/heads/master.zip
+        source_path: gcp/modules/instance
+        variables:
+          credentials_json: { get_secret: gcp_credentials }
+          project: { get_input: project }
+          admin_user: { get_input: admin_user }
+          admin_key_public: { get_input: public_key_content }
+          instance_type: { get_input: instance_type }
+          prefix: { get_input: prefix }
+          region: { get_input: gcp_region_name }
+          zone: { get_input: zone }
+          network: { get_attribute: [shared_resources, outputs, network, value] }
+    relationships:
+      - type: cloudify.relationships.terraform.run_on_host
+        target: terraform
+      - type: cloudify.relationships.connected_to
+        target: shared_resources
 
   app:
     type: cloudify.nodes.ansible.Playbook
@@ -150,25 +160,24 @@ outputs:
                   message: { get_input: website_message }
 groups:
 
-  instance:
-    type: cloudify.nodes.terraform.Module
-    properties:
-      resource_config:
-        source:
-          location: https://github.com/cloudify-community/tf-ansible-source/archive/refs/heads/master.zip
-        source_path: gcp/modules/instance
-        variables:
-          credentials_json: { get_secret: gcp_credentials }
-          project: { get_input: project }
-          admin_user: { get_input: admin_user }
-          admin_key_public: { get_input: public_key_content }
-          instance_type: { get_input: instance_type }
-          prefix: { get_input: prefix }
-          region: { get_input: gcp_region_name }
-          zone: { get_input: zone }
-          network: { get_attribute: [shared_resources, outputs, network, value] }
-    relationships:
-      - type: cloudify.terraform.relationships.run_on_host
-        target: terraform
-      - type: cloudify.relationships.connected_to
-        target: shared_resources
+  server_and_app:
+    members:
+      - instance
+      - app
+policies:
+
+  scaling_policy:
+    type: cloudify.policies.scaling
+    targets:
+      - server_and_app
+capabilities:
+
+  instance_ips:
+    description: IP addresses of any deployed instances
+    value:
+      get_attributes_list:
+        - instance
+        - outputs
+        - ip
+        - value
+

@@ -3,36 +3,38 @@ description: Cloudify Helm-eks blueprint. Creates EKS cluster and installs helm 
 
 imports:
 
-  - https://cloudify.co/spec/cloudify/6.4.0/types.yaml
+  - cloudify/types/types.yaml
   - plugin:cloudify-helm-plugin
 
 inputs:
 
 
   repo_name:
-    description: >
-      Name of the repo to add.
+    display_label: Repo Name
+    description: Name of the repo to add.
     type: string
     default: bitnami
 
   chart_name:
-    description: >
-      Chart package name to deploy from repo.
+    type: string
+    description: Chart package name to deploy from repo.
     default: postgresql
+    display_label: Chart Name
 
   helm_installation_source:
-    description: >
-      Helm download link.
+    display_label: Helm Installation Source
+    description: Helm download link.
     type: string
     default: https://get.helm.sh/helm-v3.3.1-linux-amd64.tar.gz
 
   repo_url:
-    description: >
-      URL of the repo to add. For example: https://kubernetes-charts.storage.googleapis.com/
+    display_label: Repo Url
+    description: URL of the repo to add.
     type: string
     default: https://charts.bitnami.com/bitnami
 
   cluster_deployment:
+    display_label: Cluster Deployment
     type: string
     description: The name of the deployment that exposes the connection details to a cluster.
 

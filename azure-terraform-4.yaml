@@ -1,11 +1,9 @@
 tosca_definitions_version: cloudify_dsl_1_4
-description: >
-
-  This blueprint creates infrastructure on Azure using Terraform.
+description: This blueprint creates infrastructure on Azure using Terraform.
 
 imports:
 
-  - https://cloudify.co/spec/cloudify/6.4.0/types.yaml
+  - cloudify/types/types.yaml
   - plugin:cloudify-terraform-plugin?version= >=0.15.0
   - plugin:cloudify-utilities-plugin?version= >=1.22.1
 
@@ -13,86 +11,82 @@ inputs:
 
 
   agent_user:
-    description: >
-      The username of the agent running on the instance created from the image.
+    display_label: Agent User
+    description: The username of the agent running on the instance created from the image.
     type: string
     default: ubuntu
 
   region_name:
+    display_label: Region Name
     type: string
     default: eastus
     constraints:
       - valid_values:
-          - westus,
-          - westus2,
-          - eastus,
-          - centralus,
-          - centraluseuap,
-          - southcentralus,
-          - northcentralus,
-          - westcentralus,
-          - eastus2,
-          - eastus2euap,
-          - brazilsouth,
-          - brazilus,
-          - northeurope,
-          - westeurope,
-          - eastasia,
-          - southeastasia,
-          - japanwest,
-          - japaneast,
-          - koreacentral,
-          - koreasouth,
-          - southindia,
-          - westindia,
-          - centralindia,
-          - australiaeast,
-          - australiasoutheast,
-          - canadacentral,
-          - canadaeast,
-          - uksouth,
-          - ukwest,
-          - francecentral,
-          - francesouth,
-          - australiacentral,
-          - australiacentral2,
-          - uaecentral,
-          - uaenorth,
-          - southafricanorth,
-          - southafricawest,
-          - switzerlandnorth,
-          - switzerlandwest,
-          - germanynorth,
-          - germanywestcentral,
-          - norwayeast,
-          - norwaywest,
-          - brazilsoutheast,
-          - westus3,
-          - swedencentral,
+          - westus
+          - westus2
+          - eastus
+          - centralus
+          - centraluseuap
+          - southcentralus
+          - northcentralus
+          - westcentralus
+          - eastus2
+          - eastus2euap
+          - brazilsouth
+          - brazilus
+          - northeurope
+          - westeurope
+          - eastasia
+          - southeastasia
+          - japanwest
+          - japaneast
+          - koreacentral
+          - koreasouth
+          - southindia
+          - westindia
+          - centralindia
+          - australiaeast
+          - australiasoutheast
+          - canadacentral
+          - canadaeast
+          - uksouth
+          - ukwest
+          - francecentral
+          - francesouth
+          - australiacentral
+          - australiacentral2
+          - uaecentral
+          - uaenorth
+          - southafricanorth
+          - southafricawest
+          - switzerlandnorth
+          - switzerlandwest
+          - germanynorth
+          - germanywestcentral
+          - norwayeast
+          - norwaywest
+          - brazilsoutheast
+          - westus3
+          - swedencentral
           - swedensouth
 
-  image:
-    type: list
-    description: Azure Image reference
-    default:
-      publisher: Canonical
-      offer: UbuntuServer
-      sku: 18.04-LTS
-      version: latest
-
   agent_key_name:
+    display_label: Agent Key Name
     type: string
     default: agent_key
 
   location:
+    display_label: Location
     type: string
     default: https://github.com/cloudify-community/tf-source/archive/refs/heads/main.zip
 
   source_path:
+    display_label: Source Path
     type: string
     default: template/modules/azure/public_vm
 
   prefix:
+    display_label: Prefix
     type: string
     default: cfy
 
@@ -144,10 +138,6 @@ capabilities:
     description: name
     value: { get_attribute: [cloud_resources, resources, vm, instances, 0, attributes, id] }
 
-  key_content:
-    description: Private agent key
-    value: { get_attribute: [agent_key, private_key_export] }
-
   endpoint:
     description: The external endpoint of the application.
     value: { get_attribute: [cloud_resources, resources, fip, instances, 0, attributes, ip_address] }
@@ -155,3 +145,8 @@ capabilities:
   user:
     description: user ID.
     value: { get_input: agent_user }
+
+  key_content:
+    description: Private agent key
+    value: { get_attribute: [agent_key, private_key_export] }
+

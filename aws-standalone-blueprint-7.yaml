@@ -2,7 +2,7 @@ tosca_definitions_version: cloudify_dsl_1_4
 
 imports:
 
-  - https://cloudify.co/spec/cloudify/6.2.0/types.yaml
+  - cloudify/types/types.yaml
   - plugin:cloudify-terraform-plugin?version= >=0.15.0
   - https://raw.githubusercontent.com/cloudify-community/eaas-example/master/utils/custom_types.yaml
 
@@ -10,12 +10,14 @@ inputs:
 
 
   env_name:
+    display_label: Env Name
     type: string
     default: ''
     constraints:
       - pattern: (^ *$)|(^[a-zA-Z][a-zA-Z0-9]+$)
 
   aws_region_name:
+    display_label: Aws Region Name
     type: string
     default: us-east-1
     constraints:
@@ -38,26 +40,31 @@ inputs:
           - ap-northeast-1
 
   availability_zone_1:
+    display_label: Availability Zone 1
     type: string
     default: { concat: [{get_input: aws_region_name}, a] }
     hidden: true
 
   availability_zone_2:
+    display_label: Availability Zone 2
     type: string
     default: { concat: [{get_input: aws_region_name}, b] }
     hidden: true
 
   cidr_block:
+    display_label: Cidr Block
     type: string
     default: 10.0.0.0/16
     hidden: true
 
   subnet_1_cidr:
+    display_label: Subnet 1 Cidr
     type: string
     default: 10.0.0.0/24
     hidden: true
 
   subnet_2_cidr:
+    display_label: Subnet 2 Cidr
     type: string
     default: 10.0.1.0/24
     hidden: true
@@ -113,7 +120,7 @@ node_templates:
           location: templates/tf-aws-vpc-master.zip
     relationships:
       - target: terraform
-        type: cloudify.terraform.relationships.run_on_host
+        type: cloudify.relationships.terraform.run_on_host
       - target: prefix
         type: cloudify.relationships.depends_on
 labels:
@@ -125,32 +132,26 @@ labels:
 capabilities:
 
   vpc_id:
-    description: >
-      AWS ID of the VPC
+    description: AWS ID of the VPC
     value: { get_attribute: [terraform_module, resources, vpc, instances, 0, attributes, id] }
 
   subnet_ids:
-    description: >
-      AWS ID's of subnets
+    description: AWS ID's of subnets
     value:
       - { get_attribute: [terraform_module, resources, subnet_1, instances, 0, attributes, id] }
       - { get_attribute: [terraform_module, resources, subnet_2, instances, 0, attributes, id] }
 
-  internet_gateway_id:
-    description: >
-      AWS ID of internet gateway
-    value: { get_attribute: [terraform_module, resources, internet_gateway, instances, 0, attributes, id] }
-
   availability_zones:
-    description: >
-      AWS availability zones to work with
+    description: AWS availability zones to work with
     value:
       - { get_attribute: [terraform_module, resources, subnet_1, instances, 0, attributes, availability_zone] }
       - { get_attribute: [terraform_module, resources, subnet_2, instances, 0, attributes, availability_zone] }
 
-  VM's via SSH
-    value: { get_attribute: [terraform_module, resources, agents_security_group, instances, 0, attributes, id] }
+  internet_gateway_id:
+    description: AWS ID of internet gateway
+    value: { get_attribute: [terraform_module, resources, internet_gateway, instances, 0, attributes, id] }
 
   agents_security_group_id:
-    description: >
-      AWS ID of a security group that allows Cloudify Manager to access
+    description: AWS ID of a security group that allows Cloudify Manager to access VM's via SSH
+    value: { get_attribute: [terraform_module, resources, agents_security_group, instances, 0, attributes, id] }
+

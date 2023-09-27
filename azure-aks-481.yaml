@@ -1,11 +1,9 @@
 tosca_definitions_version: cloudify_dsl_1_4
-description: >
-
-  This blueprint create a managed cluster.
+description: This blueprint create a managed cluster.
 
 imports:
 
-  - https://cloudify.co/spec/cloudify/6.4.0/types.yaml
+  - cloudify/types/types.yaml
   - plugin:cloudify-azure-plugin?version= >=3.3.0
   - plugin:cloudify-kubernetes-plugin?version= >=2.7.0
   - plugin:cloudify-utilities-plugin?version= >=1.22.1
@@ -245,12 +243,8 @@ node_templates:
         target: new_role_binding
       - type: cloudify.relationships.depends_on
         target: new_service_account
-
-  connection_details:
-    description: connection details
-    value:
-      file_content: { get_attribute: [managed_cluster, kubeconf] }
-outputs:
+      - type: cloudify.relationships.depends_on
+        target: managed_cluster
 
   store_token:
     type: cloudify.nodes.Root
@@ -281,6 +275,8 @@ outputs:
     relationships:
       - type: cloudify.relationships.depends_on
         target: store_token
+      - type: cloudify.relationships.depends_on
+        target: managed_cluster
     interfaces:
       cloudify.interfaces.lifecycle:
         precreate: {}
@@ -315,6 +311,8 @@ capabilities:
     description: The external endpoint of the application.
     value: { get_attribute: [managed_cluster, kubeconf, clusters, 0, cluster, server] }
 
-  endpoint:
-    description: The external endpoint of the application.
-    value: { get_attribute: [managed_cluster, kubeconf, clusters, 0, cluster, server] }
+  connection_details:
+    description: connection details
+    value:
+      file_content: { get_attribute: [managed_cluster, kubeconf] }
+

@@ -1,11 +1,9 @@
 tosca_definitions_version: cloudify_dsl_1_4
-description: >
-
-  This blueprint create a managed cluster.
+description: This blueprint create a managed cluster.
 
 imports:
 
-  - https://cloudify.co/spec/cloudify/6.4.0/types.yaml
+  - cloudify/types/types.yaml
   - plugin:cloudify-azure-plugin?version= >=3.3.0
   - plugin:cloudify-kubernetes-plugin?version= >=2.7.0
   - plugin:cloudify-utilities-plugin?version= >=1.22.1
@@ -226,6 +224,28 @@ node_templates:
       - type: cloudify.relationships.depends_on
         target: managed_cluster
 
+  secret:
+    type: cloudify.nodes.kubernetes.resources.Secret
+    properties:
+      client_config:
+        configuration:
+          file_content: { get_attribute: [managed_cluster, kubeconf] }
+      definition:
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: { concat: [{get_input: service_account_name}, -token] }
+          annotations:
+            kubernetes.io/service-account.name: { get_input: service_account_name }
+        type: kubernetes.io/service-account-token
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: new_role_binding
+      - type: cloudify.relationships.depends_on
+        target: new_service_account
+      - type: cloudify.relationships.depends_on
+        target: managed_cluster
+
   store_token:
     type: cloudify.nodes.Root
     interfaces:
@@ -239,9 +259,37 @@ node_templates:
       - type: cloudify.relationships.depends_on
         target: secret
 
-  endpoint:
-    description: The external endpoint of the application.
-    value: { get_attribute: [managed_cluster, kubeconf, clusters, 0, cluster, server] }
+  sanity_pod:
+    type: cloudify.nodes.kubernetes.resources.FileDefinedResource
+    properties:
+      client_config:
+        configuration:
+          api_options:
+            host: { get_attribute: [managed_cluster, kubeconf, clusters, 0, cluster, server] }
+            api_key: { get_attribute: [store_token, token] }
+            debug: false
+            verify_ssl: false
+      validate_resource_status: true
+      file:
+        resource_path: resources/template.yaml
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: store_token
+      - type: cloudify.relationships.depends_on
+        target: managed_cluster
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        precreate: {}
+        create:
+          implementation: kubernetes.cloudify_kubernetes.tasks.file_resource_create
+        configure: {}
+        start:
+          implementation: kubernetes.cloudify_kubernetes.tasks.file_resource_delete
+        poststart: {}
+        prestop: {}
+        stop: {}
+        delete: {}
+        postdelete: {}
 
   agent_key:
     type: cloudify.keys.nodes.RSAKey
@@ -267,54 +315,4 @@ capabilities:
     description: connection details
     value:
       file_content: { get_attribute: [managed_cluster, kubeconf] }
-outputs:
 
-  sanity_pod:
-    type: cloudify.nodes.kubernetes.resources.FileDefinedResource
-    properties:
-      client_config:
-        configuration:
-          api_options:
-            host: { get_attribute: [managed_cluster, kubeconf, clusters, 0, cluster, server] }
-            api_key: { get_attribute: [store_token, token] }
-            debug: false
-            verify_ssl: false
-      validate_resource_status: true
-      file:
-        resource_path: resources/template.yaml
-    relationships:
-      - type: cloudify.relationships.depends_on
-        target: store_token
-    interfaces:
-      cloudify.interfaces.lifecycle:
-        precreate: {}
-        create:
-          implementation: kubernetes.cloudify_kubernetes.tasks.file_resource_create
-        configure: {}
-        start:
-          implementation: kubernetes.cloudify_kubernetes.tasks.file_resource_delete
-        poststart: {}
-        prestop: {}
-        stop: {}
-        delete: {}
-        postdelete: {}
-
-  secret:
-    type: cloudify.nodes.kubernetes.resources.Secret
-    properties:
-      client_config:
-        configuration:
-          file_content: { get_attribute: [managed_cluster, kubeconf] }
-      definition:
-        apiVersion: v1
-        kind: Secret
-        metadata:
-          name: { concat: [{get_input: service_account_name}, -token] }
-          annotations:
-            kubernetes.io/service-account.name: { get_input: service_account_name }
-        type: kubernetes.io/service-account-token
-    relationships:
-      - type: cloudify.relationships.depends_on
-        target: new_role_binding
-      - type: cloudify.relationships.depends_on
-        target: new_service_account

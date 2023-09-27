@@ -2,7 +2,7 @@ tosca_definitions_version: cloudify_dsl_1_4
 
 imports:
 
-  - https://cloudify.co/spec/cloudify/6.4.0/types.yaml
+  - cloudify/types/types.yaml
   - plugin:cloudify-terraform-plugin
   - plugin:cloudify-ansible-plugin
 
@@ -10,6 +10,7 @@ inputs:
 
 
   aws_region_name:
+    display_label: Aws Region Name
     type: string
     description: AWS Region to deploy resources into
     default: us-east-1
@@ -40,23 +41,23 @@ inputs:
           - sa-east-1
 
   instance_type:
+    display_label: Instance Type
     type: string
     description: EC2 instance type to deploy (e.g., t2.small)
     default: t2.small
 
-  public_key_content:
-    type: string
-    description: Contents of a public key. The corresponding private key must be in the secret store.
-
   vpc_cidr:
+    display_label: Vpc Cidr
     type: string
     description: CIDR network for the deployed VPC
 
   subnet_cidr:
+    display_label: Subnet Cidr
     type: string
     description: CIDR network for the deployed subnet. Must fall within the VPC CIDR.
 
   website_message:
+    display_label: Website Message
     type: string
     description: A message to display on the home page of the deployed web server
     default: Welcome to NGINX, deployed by Cloudify
@@ -70,20 +71,23 @@ node_templates:
       resource_config:
         installation_source: https://releases.hashicorp.com/terraform/1.1.4/terraform_1.1.4_linux_amd64.zip
 
-  instance_ips:
-    description: IP addresses of any deployed instances
-    value:
-      get_attributes_list:
-        - instance
-        - outputs
-        - ip
-        - value
-
-  scaling_policy:
-    type: cloudify.policies.scaling
-    targets:
-      - server_and_app
-outputs:
+  shared_resources:
+    type: cloudify.nodes.terraform.Module
+    properties:
+      resource_config:
+        source:
+          location: https://github.com/cloudify-community/tf-ansible-source/archive/refs/heads/master.zip
+        source_path: aws/modules/shared_resources
+        variables:
+          aws_access_key: { get_secret: aws_access_key_id }
+          aws_secret_key: { get_secret: aws_secret_access_key }
+          aws_region: { get_input: aws_region_name }
+          public_key: { get_secret: public_key_content }
+          vpc_cidr: { get_input: vpc_cidr }
+          subnet_cidr: { get_input: subnet_cidr }
+    relationships:
+      - type: cloudify.relationships.terraform.run_on_host
+        target: terraform
 
   instance:
     type: cloudify.nodes.terraform.Module
@@ -101,16 +105,10 @@ outputs:
           security_group_id: { get_attribute: [shared_resources, outputs, security_group_id, value] }
           subnet_id: { get_attribute: [shared_resources, outputs, subnet_id, value] }
     relationships:
-      - type: cloudify.terraform.relationships.run_on_host
+      - type: cloudify.relationships.terraform.run_on_host
         target: terraform
       - type: cloudify.relationships.connected_to
         target: shared_resources
-
-  server_and_app:
-    members:
-      - instance
-      - app
-policies:
 
   app:
     type: cloudify.nodes.ansible.Playbook
@@ -138,20 +136,24 @@ policies:
                   message: { get_input: website_message }
 groups:
 
-  shared_resources:
-    type: cloudify.nodes.terraform.Module
-    properties:
-      resource_config:
-        source:
-          location: https://github.com/cloudify-community/tf-ansible-source/archive/refs/heads/master.zip
-        source_path: aws/modules/shared_resources
-        variables:
-          aws_access_key: { get_secret: aws_access_key_id }
-          aws_secret_key: { get_secret: aws_secret_access_key }
-          aws_region: { get_input: aws_region_name }
-          public_key: { get_secret: public_key_content }
-          vpc_cidr: { get_input: vpc_cidr }
-          subnet_cidr: { get_input: subnet_cidr }
-    relationships:
-      - type: cloudify.terraform.relationships.run_on_host
-        target: terraform
+  server_and_app:
+    members:
+      - instance
+      - app
+policies:
+
+  scaling_policy:
+    type: cloudify.policies.scaling
+    targets:
+      - server_and_app
+capabilities:
+
+  instance_ips:
+    description: IP addresses of any deployed instances
+    value:
+      get_attributes_list:
+        - instance
+        - outputs
+        - ip
+        - value
+

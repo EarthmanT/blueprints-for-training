@@ -3,57 +3,60 @@ description: Cloudify Helm-eks blueprint. Creates EKS cluster and installs helm 
 
 imports:
 
-  - https://cloudify.co/spec/cloudify/6.4.0/types.yaml
+  - cloudify/types/types.yaml
   - plugin:cloudify-helm-plugin
 
 inputs:
 
 
   infra_archive:
-    description: >
-      URL of EKS example zip file.
+    display_label: Infra Archive
+    description: URL of EKS example zip file.
     type: string
     default: https://github.com/cloudify-community/blueprint-examples/releases/download/latest/kubernetes-aws-eks.zip
 
   infra_exists:
+    display_label: Infra Exists
     type: string
-    description: >
-      Whether a getting eks example blueprint has already been uploaded to the manager or not.
+    description: Whether a getting eks example blueprint has already been uploaded to the manager or not.
     default: false
 
   infra_deployment_id:
+    display_label: Infra Deployment Id
     type: string
     description: The blueprint name, the deployment name.
     default: { get_input: env_name }
 
   eks_cluster_name:
+    display_label: Eks Cluster Name
     type: string
 
   env_name:
+    display_label: Env Name
     type: string
     default: { get_input: eks_cluster_name }
 
   repo_name:
-    description: >
-      Name of the repo to add.
+    display_label: Repo Name
+    description: Name of the repo to add.
     type: string
     default: hello
 
   chart_name:
+    display_label: Chart Name
     type: string
-    description: >
-      Chart package name to deploy from repo.
+    description: Chart package name to deploy from repo.
     default: hello
 
   helm_installation_source:
-    description: >
-      Helm download link.
+    display_label: Helm Installation Source
+    description: Helm download link.
     type: string
     default: https://get.helm.sh/helm-v3.3.1-linux-amd64.tar.gz
 
   repo_url:
-    description: >
-      URL of the repo to add. For example: https://kubernetes-charts.storage.googleapis.com/
+    display_label: Repo Url
+    description: URL of the repo to add.
     type: string
     default: https://www.kleinloog.ch/hello-helm/
 
@@ -74,31 +77,6 @@ inputs:
 
 node_templates:
 
-
-  helm_install:
-    type: cloudify.nodes.helm.Binary
-    properties:
-      use_existing_resource: false
-      installation_source: { get_input: helm_installation_source }
-
-  release:
-    type: cloudify.nodes.helm.Release
-    properties:
-      client_config:
-        configuration:
-          file_content: { get_secret: kubernetes_config }
-          api_options:
-            api_key: { get_secret: kubernetes_token }
-      resource_config:
-        name: my-hello
-        chart: { concat: [{get_input: repo_name}, /, {get_input: chart_name}] }
-    relationships:
-      - target: helm_install
-        type: cloudify.helm.relationships.run_on_host
-      - target: repo
-        type: cloudify.relationships.depends_on
-      - target: eks_cluster
-        type: cloudify.relationships.depends_on
 
   eks_cluster:
     type: cloudify.nodes.Component
@@ -123,6 +101,12 @@ node_templates:
           inputs:
             timeout: 3600
 
+  helm_install:
+    type: cloudify.nodes.helm.Binary
+    properties:
+      use_existing_resource: false
+      installation_source: { get_input: helm_installation_source }
+
   repo:
     type: cloudify.nodes.helm.Repo
     properties:
@@ -132,3 +116,23 @@ node_templates:
     relationships:
       - target: helm_install
         type: cloudify.helm.relationships.run_on_host
+
+  release:
+    type: cloudify.nodes.helm.Release
+    properties:
+      client_config:
+        configuration:
+          file_content: { get_secret: kubernetes_config }
+          api_options:
+            api_key: { get_secret: kubernetes_token }
+      resource_config:
+        name: my-hello
+        chart: { concat: [{get_input: repo_name}, /, {get_input: chart_name}] }
+    relationships:
+      - target: helm_install
+        type: cloudify.helm.relationships.run_on_host
+      - target: repo
+        type: cloudify.relationships.depends_on
+      - target: eks_cluster
+        type: cloudify.relationships.depends_on
+
