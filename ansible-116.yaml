@@ -35,6 +35,7 @@ inputs:
 
   instance_type:
     display_label: Instance Type
+    description: The name of the AWS instance type.
     type: string
     default: t2.micro
 
@@ -46,11 +47,13 @@ inputs:
 
   agent_key_name:
     display_label: Agent Key Name
+    description: How to name the agent key.
     type: string
     default: agent_key
 
   resource_suffix:
     display_label: Resource Suffix
+    description: Arbitrary suffix to append to certain resources.
     type: string
     default: { get_input: env_name }
 
@@ -157,7 +160,7 @@ node_templates:
         target: agent_key
 
   agent_key:
-    type: cloudify.keys.nodes.RSAKey
+    type: cloudify.nodes.keys.RSAKey
     properties:
       resource_config:
         key_name: { get_input: agent_key_name }

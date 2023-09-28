@@ -20,16 +20,19 @@ inputs:
 
   aws_region_name:
     display_label: Aws Region Name
+    description: The name of the AWS region.
     type: string
     default: us-east-1
 
   aws_zone_name:
     display_label: Aws Zone Name
+    description: The name of the AWS zone. The default takes the value of the aws_region_name input and appends a letter to it.
     type: string
     default: { concat: [{get_input: aws_region_name}, d] }
 
   agent_key_name:
     display_label: Agent Key Name
+    description: How to name the agent key.
     type: string
     default: agent_key
 
@@ -70,7 +73,7 @@ node_templates:
             ip: { get_attribute: [SELF, resources, eip, instances, 0, attributes, public_ip] }
 
   agent_key:
-    type: cloudify.keys.nodes.RSAKey
+    type: cloudify.nodes.keys.RSAKey
     properties:
       resource_config:
         key_name: { get_input: agent_key_name }
@@ -87,5 +90,5 @@ capabilities:
 
   application_endpoint:
     description: The external endpoint of the application.
-    value: { concat: [http://, {get_attribute: [vm, resources, eip, instances, 0, attributes, public_ip]}, ':80'] }
+    value: { concat: [http://, {get_attribute: [vm, resources, eip, instances, 0, attributes, public_ip]}, :80] }
 

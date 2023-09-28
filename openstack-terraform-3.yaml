@@ -1,5 +1,5 @@
 tosca_definitions_version: cloudify_dsl_1_4
-description: This blueprint creates infrastructure on GCP using Terraform.
+description: This blueprint creates infrastructure on Openstack using Terraform.
 
 imports:
 
@@ -112,7 +112,7 @@ node_templates:
         type: cloudify.relationships.depends_on
 
   agent_key:
-    type: cloudify.keys.nodes.RSAKey
+    type: cloudify.nodes.keys.RSAKey
     properties:
       resource_config:
         key_name: { get_input: agent_key_name }

@@ -1,4 +1,5 @@
 tosca_definitions_version: cloudify_dsl_1_4
+description: Create an EKS cluster in AWS.
 
 imports:
 
@@ -13,66 +14,79 @@ inputs:
 
   aws_access_key_id:
     display_label: Aws Access Key Id
+    description: The AWS Access key ID.
     type: string
     default: { get_secret: aws_access_key_id }
 
   aws_secret_access_key:
     display_label: Aws Secret Access Key
+    description: The AWS Access Secret Key.
     type: string
     default: { get_secret: aws_secret_access_key }
 
   aws_region_name:
     display_label: Aws Region Name
+    description: The AWS region name.
     type: string
     default: us-east-1
 
   availability_zone_1:
     display_label: Availability Zone 1
+    description: An AWS Zone Name.
     type: string
     default: { concat: [{get_input: aws_region_name}, d] }
 
   availability_zone_2:
     display_label: Availability Zone 2
+    description: An AWS Zone Name.
     type: string
     default: { concat: [{get_input: aws_region_name}, e] }
 
   eks_cluster_name:
     display_label: Eks Cluster Name
+    description: The name of the aws eks cluster.
     type: string
     default: eks_cluster_name
 
   env_name:
     display_label: Env Name
+    description: An arbitrary name to append to certain resources and identify the environment.
     type: string
     default: { get_input: eks_cluster_name }
 
   eks_nodegroup_name:
     display_label: Eks Nodegroup Name
+    description: The name of the node group.
     type: string
     default: { concat: [eks_node_group, {get_input: env_name}] }
 
   kubernetes_version:
     display_label: Kubernetes Version
+    description: The name of the kubernetes version to install on the k8s cluster.
     type: string
     default: ''
 
   service_account_name:
     display_label: Service Account Name
+    description: The SA account name.
     type: string
     default: examples-user
 
   service_account_namespace:
     display_label: Service Account Namespace
+    description: The namespace to create the kubernetes service account inside.
     type: string
     default: default
 
   ssh_keypair:
     display_label: Ssh Keypair
+    description: The name of the key pair.
     type: string
     default: { concat: [eks_key, {get_input: env_name}] }
 
   agent_key_name:
     display_label: Agent Key Name
+    description: The name of the agent key.
     type: string
     default: agent_key
 dsl_definitions:

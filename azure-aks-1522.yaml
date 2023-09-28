@@ -13,24 +13,28 @@ inputs:
 
   subscription_id:
     display_label: Subscription Id
+    description: An Azure Service Account Subscription ID.
     type: string
     required: false
     default: { get_secret: azure_subscription_id }
 
   tenant_id:
     display_label: Tenant Id
+    description: An Azure Service Account Tenant ID.
     type: string
     required: false
     default: { get_secret: azure_tenant_id }
 
   client_id:
     display_label: Client Id
+    description: An Azure Service Account Client ID.
     type: string
     required: false
     default: { get_secret: azure_client_id }
 
   client_secret:
     display_label: Client Secret
+    description: An Azure Service Account Client Secret.
     type: string
     required: false
     default: { get_secret: azure_client_secret }
@@ -40,6 +44,7 @@ inputs:
     type: string
     required: true
     default: eastus2
+    description: Azure region name.
 
   env_name:
     display_label: Env Name
@@ -53,26 +58,31 @@ inputs:
     display_label: Resource Group Name
     type: string
     default: { concat: [cfyaksrg, {get_input: env_name}] }
+    description: Azure resource group name.
 
   managed_cluster_name:
     display_label: Managed Cluster Name
     type: string
     default: { concat: [cfyaks, {get_input: env_name}] }
+    description: How to name the Azure EKS Cluster.
 
   service_account_name:
     display_label: Service Account Name
     type: string
     default: examples-user
+    description: Kubnernetes Service Account Name.
 
   service_account_namespace:
     display_label: Service Account Namespace
     type: string
     default: default
+    description: Kubnernetes Service Account Namespace.
 
   agent_key_name:
     display_label: Agent Key Name
     type: string
     default: agent_key
+    description: Agent key name.
 dsl_definitions:
 
   client_config:
@@ -292,7 +302,7 @@ node_templates:
         postdelete: {}
 
   agent_key:
-    type: cloudify.keys.nodes.RSAKey
+    type: cloudify.nodes.keys.RSAKey
     properties:
       resource_config:
         key_name: { get_input: agent_key_name }
