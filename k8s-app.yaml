@@ -1,5 +1,4 @@
 tosca_definitions_version: cloudify_dsl_1_4
-
 description: Create application in Kubernetes.
 
 imports:
