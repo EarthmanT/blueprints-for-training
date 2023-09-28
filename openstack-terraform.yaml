@@ -1,5 +1,5 @@
 tosca_definitions_version: cloudify_dsl_1_4
-description: This blueprint creates infrastructure on GCP using Terraform.
+description: This blueprint creates infrastructure on Openstack using Terraform.
 
 imports:
 
