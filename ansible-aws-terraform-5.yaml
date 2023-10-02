@@ -90,5 +90,5 @@ capabilities:
 
   application_endpoint:
     description: The external endpoint of the application.
-    value: { concat: [http://, {get_attribute: [vm, resources, eip, instances, 0, attributes, public_ip]}, :80] }
+    value: { concat: [http://, {get_attribute: [vm, resources, eip, instances, 0, attributes, public_ip]}, ':80'] }
 
