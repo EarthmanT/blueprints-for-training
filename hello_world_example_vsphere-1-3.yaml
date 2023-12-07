@@ -1,0 +1,165 @@
+tosca_definitions_version: cloudify_dsl_1_5
+
+imports:
+
+  - cloudify/types/types.yaml
+  - plugin:cloudify-vsphere-plugin
+  - plugin:cloudify-utilities-plugin?version= >=1.22.1
+  - plugin:cloudify-ansible-plugin
+  - includes/hello-world-ansible.yaml
+
+inputs:
+
+
+  vsphere_port:
+    display_label: Vsphere Port
+    type: string
+    default: '443'
+
+  vsphere_allow_insecure:
+    display_label: Vsphere Allow Insecure
+    type: string
+    default: true
+
+  env_name:
+    display_label: Env Name
+    type: string
+    default: '1'
+
+  server_name:
+    display_label: Server Name
+    type: string
+    default: { concat: ["example-vm-1", {get_input: resource_suffix}] }
+
+  template_name:
+    display_label: Template Name
+    type: string
+    default: ubuntu-14.04.5-server-amd64-tmpl
+
+  cpus:
+    display_label: Cpus
+    type: string
+    default: 1
+
+  memory:
+    display_label: Memory
+    type: string
+    default: 1024
+
+  domain:
+    display_label: Domain
+    type: string
+    default: localdom
+
+  dns_servers:
+    display_label: Dns Servers
+    type: list
+    default:
+      - 8.8.8.8
+
+  network_name:
+    display_label: Network Name
+    type: string
+    default: Internal
+
+  switch_distributed:
+    display_label: Switch Distributed
+    type: boolean
+    default: false
+
+  use_dhcp:
+    display_label: Use Dhcp
+    type: boolean
+    default: true
+
+  network_cidr:
+    display_label: Network Cidr
+    type: string
+    default: 172.16.168.0/24
+
+  gateway:
+    display_label: Gateway
+    type: string
+    default: 172.16.168.1
+
+  ip:
+    display_label: Ip
+    type: string
+    default: 172.16.168.201
+
+  agent_user:
+    display_label: Agent User
+    type: string
+    default: ubuntu
+
+  agent_key_name:
+    display_label: Agent Key Name
+    type: string
+    default: vsphere_key
+dsl_definitions:
+
+  connection_config:
+    username: { get_secret: vsphere_username }
+    password: { get_secret: vsphere_password }
+    host: { get_secret: vsphere_host }
+    port: { get_input: vsphere_port }
+    datacenter_name: { get_secret: vsphere_datacenter_name }
+    resource_pool_name: { get_secret: vsphere_resource_pool_name }
+    auto_placement: { get_secret: vsphere_auto_placement }
+    allow_insecure: { get_input: vsphere_allow_insecure }
+
+node_templates:
+
+
+  vm:
+    type: cloudify.vsphere.nodes.Server
+    properties:
+      connection_config:
+        username: { get_secret: vsphere_username }
+        password: { get_secret: vsphere_password }
+        host: { get_secret: vsphere_host }
+        port: { get_input: vsphere_port }
+        datacenter_name: { get_secret: vsphere_datacenter_name }
+        resource_pool_name: { get_secret: vsphere_resource_pool_name }
+        auto_placement: { get_secret: vsphere_auto_placement }
+        allow_insecure: { get_input: vsphere_allow_insecure }
+      agent_config:
+        install_method: none
+      server:
+        template: { get_input: template_name }
+        cpus: { get_input: cpus }
+        memory: { get_input: memory }
+        name: { get_input: server_name }
+      networking:
+        domain: { get_input: domain }
+        dns_servers: { get_input: dns_servers }
+        connect_networks:
+          - name: { get_input: network_name }
+            management: true
+            switch_distributed: { get_input: switch_distributed }
+            use_dhcp: { get_input: use_dhcp }
+            network: { get_input: network_cidr }
+            gateway: { get_input: gateway }
+            ip: { get_input: ip }
+
+  agent_key:
+    type: cloudify.keys.nodes.RSAKey
+    properties:
+      resource_config:
+        key_name: { get_input: agent_key_name }
+        openssh_format: true
+      use_secret_store: true
+      use_secrets_if_exist: true
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: keys.cloudify_ssh_key.operations.create
+          inputs:
+            store_public_key_material: true
+            store_private_key_material: true
+capabilities:
+
+  application_endpoint:
+    description: The external endpoint of the application.
+    value: { concat: ["http://", {get_attribute: [vm, ip]}, ":80"] }
+
