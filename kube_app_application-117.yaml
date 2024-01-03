@@ -1,0 +1,194 @@
+tosca_definitions_version: cloudify_dsl_1_5
+description: This blueprint installs some kubernetes resources.
+
+imports:
+
+  - cloudify/types/types.yaml
+  - plugin:cloudify-kubernetes-plugin
+
+inputs:
+
+
+  database_user:
+    display_label: Database User
+    type: string
+    default: drupal
+
+  database_password:
+    display_label: Database Password
+    type: string
+    default: U2FsdGVkX19VxMEA6AdZt5fccsn/JsFU4eGpttt13JI=
+
+  database_name:
+    display_label: Database Name
+    type: string
+    default: drupal
+
+  load_balancer_deployment:
+    display_label: Load Balancer Deployment
+    type: string
+    description: The deployment ID of the DB LB APP lb deployment. Usually either 'lb', 'public-cloud-lb', or 'private-cloud-lb'.
+    default: lb
+
+  kubernetes_deployment:
+    display_label: Kubernetes Deployment
+    type: string
+    description: The deployment ID of the Kubernetes deployment.
+    default: kubernetes
+
+  current_suffix_index:
+    display_label: Current Suffix Index
+    type: string
+    description: The index of the deployment from a components composition
+    default: '0'
+node_types:
+
+  cloudify.nodes.kubernetes.resources.PersistentVolumeClaim:
+    derived_from: cloudify.nodes.kubernetes.resources.CustomBlueprintDefinedResource
+    properties:
+      api_mapping:
+        default:
+          create:
+            api: CoreV1Api
+            method: create_namespaced_persistent_volume_claim
+            payload: V1PersistentVolumeClaim
+          read:
+            api: CoreV1Api
+            method: read_namespaced_persistent_volume_claim
+          delete:
+            api: CoreV1Api
+            method: delete_namespaced_persistent_volume_claim
+            payload: V1DeleteOptions
+          update:
+            api: CoreV1Api
+            method: patch_namespaced_persistent_volume_claim
+
+node_templates:
+
+
+  pv:
+    type: cloudify.nodes.kubernetes.resources.FileDefinedResource
+    properties:
+      file:
+        resource_path: resources/pv.yaml
+        template_variables:
+          NAME: { concat: ["wp-pv-", {get_input: current_suffix_index}] }
+          PATH: { concat: ["/tmp/data/wp-pv-", {get_input: current_suffix_index}] }
+    relationships:
+      - type: cloudify.kubernetes.relationships.managed_by_master
+        target: master
+
+  pv-claim:
+    type: cloudify.nodes.kubernetes.resources.PersistentVolumeClaim
+    properties:
+      definition:
+        apiVersion: v1
+        kind: PersistentVolumeClaim
+        metadata:
+          name: { concat: ["wp-pv-claim-", {get_input: current_suffix_index}] }
+          labels:
+            app: { concat: ["wordpress-", {get_input: current_suffix_index}] }
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 20Gi
+    relationships:
+      - type: cloudify.kubernetes.relationships.managed_by_master
+        target: master
+      - type: cloudify.relationships.depends_on
+        target: pv
+
+  service:
+    type: cloudify.nodes.kubernetes.resources.FileDefinedResource
+    properties:
+      file:
+        resource_path: resources/service.yaml
+        template_variables:
+          NODE_PORT: { get_attribute: ["service", "node_port"] }
+          PORT: 80
+          NAME: { concat: ["wordpress-", {get_input: current_suffix_index}] }
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        precreate:
+          implementation: scripts/setPort.py
+          inputs:
+            EXTERNAL_NODE_PORT_BASE: 30080
+            INSTANCE_INDEX: { get_input: current_suffix_index }
+          executor: central_deployment_agent
+          max_retries: 0
+    relationships:
+      - type: cloudify.kubernetes.relationships.managed_by_master
+        target: master
+      - type: cloudify.relationships.depends_on
+        target: pv-claim
+
+  deploy:
+    type: cloudify.nodes.kubernetes.resources.Deployment
+    properties:
+      definition:
+        apiVersion: extensions/v1beta1
+        kind: Deployment
+        metadata:
+          name: { concat: ["wordpress-", {get_input: current_suffix_index}] }
+          labels:
+            app: { concat: ["wordpress-", {get_input: current_suffix_index}] }
+        spec:
+          strategy:
+            type: Recreate
+          template:
+            metadata:
+              labels:
+                app: { concat: ["wordpress-", {get_input: current_suffix_index}] }
+                tier: frontend
+            spec:
+              containers:
+                - image: wordpress:4.8.0-apache
+                  name: { concat: ["wordpress-", {get_input: current_suffix_index}] }
+                  env:
+                    - name: WORDPRESS_DB_HOST
+                      value: { get_capability: [{get_input: load_balancer_deployment}, "endpoint"] }
+                    - name: WORDPRESS_DB_USER
+                      value: { get_input: database_user }
+                    - name: WORDPRESS_DB_PASSWORD
+                      value: { get_input: database_password }
+                    - name: WORDPRESS_DB_NAME
+                      value: { get_input: database_name }
+                    - name: WORDPRESS_TABLE_PREFIX
+                      value: cfy
+                  ports:
+                    - containerPort: 80
+                      name: { concat: ["wordpress-", {get_input: current_suffix_index}] }
+                  volumeMounts:
+                    - name: { concat: ["wordpress-persistent-storage-", {get_input: current_suffix_index}] }
+                      mountPath: /var/www/html
+              volumes:
+                - name: { concat: ["wordpress-persistent-storage-", {get_input: current_suffix_index}] }
+                  persistentVolumeClaim:
+                    claimName: { concat: ["wp-pv-claim-", {get_input: current_suffix_index}] }
+      options:
+        grace_period_seconds: 5
+        propagation_policy: Foreground
+        namespace: default
+    relationships:
+      - type: cloudify.kubernetes.relationships.managed_by_master
+        target: master
+      - type: cloudify.relationships.depends_on
+        target: service
+
+  master:
+    type: cloudify.kubernetes.nodes.Master
+    properties:
+      configuration:
+        api_options:
+          host: { concat: ["https://", {get_capability: [{get_input: kubernetes_deployment}, endpoint]}, ":6443"] }
+          api_key: { get_capability: [{get_input: kubernetes_deployment}, "token"] }
+          debug: false
+          verify_ssl: false
+outputs:
+
+  app_login:
+    description: app login
+    value: { concat: ["http://", {get_capability: [{get_input: kubernetes_deployment}, node-endpoint]}, ":", {get_attribute: [service, node_port]}] }
+

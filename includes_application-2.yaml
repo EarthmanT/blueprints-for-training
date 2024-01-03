@@ -1,0 +1,167 @@
+tosca_definitions_version: cloudify_dsl_1_5
+description: Install Kubernetes on kube-master and kube-node with kubespray.
+
+imports:
+
+  - plugin:cloudify-ansible-plugin?version= >=2.10.0
+
+inputs:
+
+
+  kubespray_ansible_playbook_path:
+    display_label: Kubespray Ansible Playbook Path
+    type: string
+    default: kubespray/cluster.yml
+
+  kubespray_ansible_playbook_path_scale:
+    display_label: Kubespray Ansible Playbook Path Scale
+    type: string
+    default: kubespray/scale.yml
+
+  kubespray_ansible_playbook_path_removal:
+    display_label: Kubespray Ansible Playbook Path Removal
+    type: string
+    default: kubespray/remove-node.yml
+
+  kubespray_dns_mode:
+    display_label: Kubespray Dns Mode
+    type: string
+    default: coredns
+
+  kubespray_kube_network_plugin:
+    display_label: Kubespray Kube Network Plugin
+    type: string
+    default: flannel
+
+  kubespray_ansible_ssh_common_args:
+    display_label: Kubespray Ansible Ssh Common Args
+    type: string
+    default: -o ControlMaster=auto -o ControlPersist=30m -o ConnectionAttempts=100 -o UserKnownHostsFile=/dev/null -o "StrictHostKeyChecking no"
+
+  ansible_env_vars:
+    default:
+      ANSIBLE_INVALID_TASK_ATTRIBUTE_FAILED: 'False'
+      ANSIBLE_HOST_KEY_CHECKING: 'False'
+      ANSIBLE_STDOUT_CALLBACK: dense
+
+  log_stdout:
+    default: false
+
+  store_facts:
+    default: false
+relationships:
+
+  node_attach:
+    derived_from: cloudify.ansible.relationships.connected_to_host
+    source_interfaces:
+      cloudify.interfaces.relationship_lifecycle:
+        preconfigure:
+          implementation: ansible.cloudify_ansible.tasks.ansible_requires_host
+          inputs:
+            group_name:
+              default: ''
+              description: >
+                Ansible node group name
+            hostname:
+              default: ''
+              description: >
+                Hostname
+            host_config:
+              default: {}
+              description: >
+                Host configuration:
+                  ansible_host: The hostname or IP address of the host to SSH
+                    into.
+                  ansible_user: The username to SSH with.
+                  ansible_ssh_private_key_file: The private key file to SSH
+                    with.
+                  ansible_become: A boolean value, `true` or `false` whether
+                    to assume the user privileges.
+                  ansible_ssh_common_args: Additional arguments to the SSH
+                    command, by default: '-o StrictHostKeyChecking=no'
+        establish:
+          implementation: ansible.cloudify_ansible.tasks.run
+          inputs:
+            extra_packages:
+              default:
+                - netaddr
+                - ipaddr
+            site_yaml_path:
+              default: { get_input: kubespray_ansible_playbook_path_scale }
+            remerge_sources:
+              default: true
+            run_data:
+              default:
+                dns_mode: { get_input: kubespray_dns_mode }
+                kube_network_plugin: { get_input: kubespray_kube_network_plugin }
+                kube_api_anonymous_auth: true
+            options_config:
+              default:
+                skip_tags:
+                  - check
+                  - bastion
+                ssh_common_args: { get_input: kubespray_ansible_ssh_common_args }
+            ansible_env_vars:
+              default: { get_input: ansible_env_vars }
+            log_stdout:
+              default: { get_input: log_stdout }
+            store_facts:
+              default: { get_input: store_facts }
+        unlink:
+          implementation: ansible.cloudify_ansible.tasks.ansible_remove_host
+          inputs:
+            group_name:
+              default: ''
+              description: >
+                Ansible node group name
+            hostname:
+              default: ''
+              description: >
+                Hostname
+
+node_templates:
+
+
+  kube-base-config:
+    type: cloudify.nodes.Root
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: scripts/install_netaddr.sh
+          executor: central_deployment_agent
+        configure:
+          implementation: ansible.cloudify_ansible.tasks.run
+          inputs:
+            extra_packages:
+              - netaddr
+              - ipaddr
+            site_yaml_path: { get_input: kubespray_ansible_playbook_path }
+            run_data:
+              dns_mode: { get_input: kubespray_dns_mode }
+              kube_network_plugin: { get_input: kubespray_kube_network_plugin }
+              kube_api_anonymous_auth: true
+            options_config:
+              skip_tags:
+                - localhost
+                - check
+                - bastion
+              ssh_common_args: { get_input: kubespray_ansible_ssh_common_args }
+            ansible_env_vars: { get_input: ansible_env_vars }
+            log_stdout: { get_input: log_stdout }
+            store_facts: false
+    relationships:
+      - type: cloudify.ansible.relationships.connected_to_host
+        target: kube-master
+      - type: node_attach
+        target: kube-node
+groups:
+
+  k8s-cluster:
+    members:
+      - kube-master
+      - kube-node
+
+  etcd:
+    members:
+      - kube-master
+

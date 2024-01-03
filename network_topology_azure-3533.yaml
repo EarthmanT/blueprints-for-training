@@ -1,0 +1,238 @@
+tosca_definitions_version: cloudify_dsl_1_5
+description: >
+
+  Create an Example Azure Network.
+dsl_definitions:
+
+  client_config:
+    subscription_id: { get_secret: azure_subscription_id }
+    tenant_id: { get_secret: azure_tenant_id }
+    client_id: { get_secret: azure_client_id }
+    client_secret: { get_secret: azure_client_secret }
+
+imports:
+
+  - cloudify/types/types.yaml
+  - plugin:cloudify-azure-plugin
+
+inputs:
+
+
+  retry_after:
+    display_label: Retry After
+    type: integer
+    default: 5
+
+  resource_prefix:
+    display_label: Resource Prefix
+    type: string
+    description: Prefix of every resource created at this deployment on Azure.
+    default: { get_secret: resource_prefix }
+
+  resource_suffix:
+    display_label: Resource Suffix
+    type: string
+    description: Suffix of every resource created at this deployment on Azure.
+    default: { get_secret: resource_suffix }
+
+  mgmt_subnet_cidr:
+    display_label: Mgmt Subnet Cidr
+    type: string
+    description: Management subnet CIDR
+    default: 10.10.1.0/24
+
+  public_subnet_cidr:
+    display_label: Public Subnet Cidr
+    type: string
+    description: Public subnet CIDR
+    default: 10.10.2.0/24
+
+  wan_subnet_cidr:
+    display_label: Wan Subnet Cidr
+    type: string
+    description: WAN subnet CIDR
+    default: 10.10.3.0/24
+
+  lan_subnet_cidr:
+    display_label: Lan Subnet Cidr
+    type: string
+    description: LAN subnet CIDR
+    default: 10.10.4.0/24
+
+  network_api_version:
+    display_label: Network Api Version
+    type: string
+    description: API Version for Network
+    default: '2015-06-15'
+
+node_templates:
+
+
+  resource_group:
+    type: cloudify.nodes.azure.ResourceGroup
+    properties:
+      client_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      name: { concat: [{get_input: resource_prefix}, "_resource_group", {get_input: resource_suffix}] }
+      location: { get_secret: azure_location }
+
+  virtual_network:
+    type: cloudify.azure.nodes.network.VirtualNetwork
+    properties:
+      client_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      api_version: { get_input: network_api_version }
+      name: { concat: [{get_input: resource_prefix}, "_vnet", {get_input: resource_suffix}] }
+      location: { get_secret: azure_location }
+      retry_after: { get_input: retry_after }
+    relationships:
+      - type: cloudify.relationships.azure.contained_in_resource_group
+        target: resource_group
+
+  mgmt_subnet:
+    type: cloudify.azure.nodes.network.Subnet
+    properties:
+      client_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      api_version: { get_input: network_api_version }
+      name: { concat: [{get_input: resource_prefix}, "_mgmt_subnet", {get_input: resource_suffix}] }
+      location: { get_secret: azure_location }
+      retry_after: { get_input: retry_after }
+      resource_config:
+        addressPrefix: { get_input: mgmt_subnet_cidr }
+    relationships:
+      - type: cloudify.relationships.azure.contained_in_virtual_network
+        target: virtual_network
+
+  public_subnet:
+    type: cloudify.azure.nodes.network.Subnet
+    properties:
+      client_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      api_version: { get_input: network_api_version }
+      name: { concat: [{get_input: resource_prefix}, "_public_subnet", {get_input: resource_suffix}] }
+      location: { get_secret: azure_location }
+      retry_after: { get_input: retry_after }
+      resource_config:
+        addressPrefix: { get_input: public_subnet_cidr }
+    relationships:
+      - type: cloudify.relationships.azure.contained_in_virtual_network
+        target: virtual_network
+
+  wan_subnet:
+    type: cloudify.azure.nodes.network.Subnet
+    properties:
+      client_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      api_version: { get_input: network_api_version }
+      name: { concat: [{get_input: resource_prefix}, "_wan_subnet", {get_input: resource_suffix}] }
+      location: { get_secret: azure_location }
+      retry_after: { get_input: retry_after }
+      resource_config:
+        addressPrefix: { get_input: wan_subnet_cidr }
+    relationships:
+      - type: cloudify.relationships.azure.contained_in_virtual_network
+        target: virtual_network
+
+  lan_subnet:
+    type: cloudify.azure.nodes.network.Subnet
+    properties:
+      client_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      api_version: { get_input: network_api_version }
+      name: { concat: [{get_input: resource_prefix}, "_lan_subnet", {get_input: resource_suffix}] }
+      location: { get_secret: azure_location }
+      retry_after: { get_input: retry_after }
+      resource_config:
+        addressPrefix: { get_input: lan_subnet_cidr }
+    relationships:
+      - type: cloudify.relationships.azure.contained_in_virtual_network
+        target: virtual_network
+
+  network_security_group:
+    type: cloudify.azure.nodes.network.NetworkSecurityGroup
+    properties:
+      client_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      use_external_resource: false
+      name: { concat: [{get_input: resource_prefix}, "_nsg", {get_input: resource_suffix}] }
+      location: { get_secret: azure_location }
+      retry_after: { get_input: retry_after }
+      resource_config:
+        securityRules:
+          - name: all_tcp
+            properties:
+              description: All TCP
+              protocol: Tcp
+              sourcePortRange: '*'
+              destinationPortRange: 22
+              sourceAddressPrefix: '*'
+              destinationAddressPrefix: '*'
+              priority: 100
+              access: Allow
+              direction: Inbound
+          - name: all_ucp
+            properties:
+              description: All UDP
+              protocol: Udp
+              sourcePortRange: '*'
+              destinationPortRange: 80
+              sourceAddressPrefix: '*'
+              destinationAddressPrefix: '*'
+              priority: 101
+              access: Allow
+              direction: Inbound
+    relationships:
+      - type: cloudify.relationships.azure.contained_in_resource_group
+        target: resource_group
+capabilities:
+
+  resource_group:
+    description: resource group name
+    value: { get_attribute: ["resource_group", "name"] }
+
+  virtual_network:
+    description: virtual network name
+    value: { get_attribute: ["virtual_network", "name"] }
+
+  mgmt_subnet:
+    description: mgmt subnet name
+    value: { get_attribute: ["mgmt_subnet", "name"] }
+
+  public_subnet:
+    description: public subnet name
+    value: { get_attribute: ["public_subnet", "name"] }
+
+  wan_subnet:
+    description: wan subnet name
+    value: { get_attribute: ["wan_subnet", "name"] }
+
+  lan_subnet:
+    description: lan subnet name
+    value: { get_attribute: ["lan_subnet", "name"] }
+
+  network_security_group:
+    description: network security group name
+    value: { get_attribute: ["network_security_group", "name"] }
+

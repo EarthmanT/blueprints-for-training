@@ -1,0 +1,211 @@
+tosca_definitions_version: cloudify_dsl_1_5
+description: >
+
+  Deploys an simple, unprivileged OpenShift service. Designed for use with Red Hat's OpenShift Online PaaS.
+
+imports:
+
+  - cloudify/types/types.yaml
+  - plugin:cloudify-kubernetes-plugin
+
+inputs:
+
+
+  kubernetes_master_configuration:
+    display_label: Kubernetes Master Configuration
+    type: dict
+    default:
+      host: { get_secret: openshift_master_endpoint }
+      api_key: { get_secret: openshift_secret_token }
+      debug: false
+      verify_ssl: false
+
+  kubernetes_api_options:
+    description: >
+      kubernetes api options
+    default: { get_input: kubernetes_master_configuration }
+
+  app_name:
+    display_label: App Name
+    type: string
+    description: Prefix to use for application service / deployment names
+    default: exampleapp
+
+  namespace:
+    display_label: Namespace
+    type: string
+    description: OpenShift namespace to use
+    default: { get_secret: openshift_namespace }
+
+  fqdn_suffix:
+    display_label: Fqdn Suffix
+    description: Domain name to append to form the final service endpoint URL.
+    type: string
+    default: apps.us-west-1.starter.openshift-online.com
+
+  endpoint:
+    display_label: Endpoint
+    description: Final service endpoint
+    type: string
+    default: { concat: [{get_input: app_name}, "-", {get_input: namespace}, ".", {get_input: fqdn_suffix}] }
+
+  container:
+    display_label: Container
+    description: Standard container reference
+    type: string
+    default: jcornutt/cloudify:latest
+
+  container_port:
+    display_label: Container Port
+    description: Exposed container port to reference
+    type: integer
+    default: 8080
+
+node_templates:
+
+
+  app_ingress:
+    type: cloudify.nodes.kubernetes.resources.BlueprintDefinedResource
+    properties:
+      client_config:
+        configuration:
+          api_options: { get_input: kubernetes_api_options }
+      definition:
+        apiVersion: networking.k8s.io/v1beta1
+        kind: Ingress
+        metadata:
+          name: { concat: [{get_input: app_name}, "-ingress"] }
+          labels:
+            app: { get_input: app_name }
+            manager: cloudify
+        spec:
+          rules:
+            - host: { get_input: endpoint }
+              http:
+                paths:
+                  - path: /
+                    backend:
+                      serviceName: { get_property: ["app_svc", "definition", "metadata", "name"] }
+                      servicePort: 80
+      options:
+        namespace: { get_input: namespace }
+    relationships:
+      - type: cloudify.relationships.connected_to
+        target: app_svc
+
+  app_svc:
+    type: cloudify.nodes.kubernetes.resources.Service
+    properties:
+      client_config:
+        configuration:
+          api_options: { get_input: kubernetes_api_options }
+      definition:
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: { concat: [{get_property: [app, definition, metadata, name]}, "-svc"] }
+          labels:
+            app: { get_input: app_name }
+            manager: cloudify
+            tier: app
+        spec:
+          selector:
+            app: { get_input: app_name }
+            manager: cloudify
+            tier: app
+          ports:
+            - port: 80
+              targetPort: { get_input: container_port }
+      options:
+        namespace: { get_input: namespace }
+      validate_resource_status: false
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: app
+
+  app:
+    type: cloudify.nodes.kubernetes.resources.Deployment
+    properties:
+      client_config:
+        configuration:
+          api_options: { get_input: kubernetes_api_options }
+      definition:
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: { concat: [{get_input: app_name}, "-app"] }
+          labels:
+            app: { get_input: app_name }
+            manager: cloudify
+            tier: app
+        spec:
+          selector:
+            matchLabels:
+              app: { get_input: app_name }
+              manager: cloudify
+              tier: app
+          replicas: 1
+          template:
+            metadata:
+              labels:
+                app: { get_input: app_name }
+                manager: cloudify
+                tier: app
+            spec:
+              containers:
+                - name: { get_property: ["SELF", "definition", "metadata", "name"] }
+                  image: { get_input: container }
+                  ports:
+                    - containerPort: { get_input: container_port }
+                      name: http-server
+                  resources:
+                    limits:
+                      cpu: 1
+                      memory: 128Mi
+                    requests:
+                      cpu: 1
+                      memory: 128Mi
+                  volumeMounts:
+                    - mountPath: /var/www
+                      name: pvol
+              volumes:
+                - name: pvol
+                  persistentVolumeClaim:
+                    claimName: { get_property: ["my_volume_claim", "definition", "metadata", "name"] }
+      options:
+        namespace: { get_input: namespace }
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: my_volume_claim
+
+  my_volume_claim:
+    type: cloudify.nodes.kubernetes.resources.BlueprintDefinedResource
+    properties:
+      client_config:
+        configuration:
+          api_options: { get_input: kubernetes_api_options }
+      definition:
+        apiVersion: v1
+        kind: PersistentVolumeClaim
+        metadata:
+          name: { concat: [{get_input: app_name}, "-pvc0"] }
+          labels:
+            app: { get_input: app_name }
+            manager: cloudify
+            tier: app
+        spec:
+          storageClassName: gp2
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi
+      options:
+        namespace: { get_input: namespace }
+outputs:
+
+  service:
+    description: Service endpoint
+    value:
+      endpoint: { concat: ["http://", {get_input: endpoint}] }
+
