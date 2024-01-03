@@ -1,0 +1,62 @@
+tosca_definitions_version: cloudify_dsl_1_5
+description: This blueprint is a utilities plugin REST example.
+
+imports:
+
+  - cloudify/types/types.yaml
+  - plugin:cloudify-utilities-plugin
+
+inputs:
+
+
+  rest_endpoint:
+    display_label: Rest Endpoint
+    type: string
+    description: >
+      REST API endpoint
+    default: jsonplaceholder.typicode.com
+
+  rest_endpoint_cert_path:
+    display_label: Rest Endpoint Cert Path
+    type: string
+    description: >
+      REST API endpoint CA_BUNDLE
+    default: { get_secret: cacert_bundle }
+
+  rest_endpoint_cert:
+    display_label: Rest Endpoint Cert
+    type: string
+    description: >
+      REST API endpoint CA_BUNDLE Use /inputs/rest_endpoint_cert.yaml as input
+
+node_templates:
+
+
+  user10-all-properties:
+    type: cloudify.rest.Requests
+    properties:
+      hosts:
+        - { get_input: rest_endpoint }
+      port: 443
+      ssl: true
+      verify: { get_input: rest_endpoint_cert_path }
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        start:
+          inputs:
+            template_file: templates/get-user-all-properties-template.yaml
+
+  user10-some-properties:
+    type: cloudify.rest.Requests
+    properties:
+      hosts:
+        - { get_input: rest_endpoint }
+      port: 443
+      ssl: true
+      verify: { get_input: rest_endpoint_cert }
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        start:
+          inputs:
+            template_file: templates/get-user-some-properties-template.yaml
+

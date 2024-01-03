@@ -1,0 +1,268 @@
+tosca_definitions_version: cloudify_dsl_1_5
+description: This blueprint creates a network and VM in Openstack.
+
+imports:
+
+  - cloudify/types/types.yaml
+  - plugin:cloudify-openstack-plugin?version= >=3.2.2
+  - plugin:cloudify-utilities-plugin
+
+inputs:
+
+
+  resource_prefix:
+    display_label: Resource Prefix
+    type: string
+    description: Prefix of every resource created at this deployment on Openstack.
+    default: { get_secret: resource_prefix }
+
+  resource_suffix:
+    display_label: Resource Suffix
+    type: string
+    description: Suffix of every resource created at this deployment on Openstack.
+    default: { get_secret: resource_suffix }
+
+  openstack_network_deployment_name:
+    display_label: Openstack Network Deployment Name
+    type: string
+    default: VNFM-Networking-Prov-Openstack-networks
+
+  flavor_id:
+    display_label: Flavor Id
+    type: string
+    default: 3
+
+  image_id:
+    display_label: Image Id
+    type: string
+    default: 1d6340df-2f14-41e6-ab27-bbd35e818fdf
+
+  vnf_vm_name:
+    display_label: Vnf Vm Name
+    type: string
+    default: webserver
+dsl_definitions:
+
+  client_config:
+    password: { get_secret: openstack_password }
+    username: { get_secret: openstack_username }
+    project_name: { get_secret: openstack_tenant_name }
+    region_name: { get_secret: openstack_region }
+    auth_url: { get_secret: openstack_auth_url }
+
+node_templates:
+
+
+  network_topology:
+    type: cloudify.nodes.SharedResource
+    properties:
+      resource_config:
+        deployment:
+          id: { get_input: openstack_network_deployment_name }
+
+  external_network:
+    type: cloudify.nodes.openstack.Network
+    properties:
+      client_config:
+        password: { get_secret: openstack_password }
+        username: { get_secret: openstack_username }
+        project_name: { get_secret: openstack_tenant_name }
+        region_name: { get_secret: openstack_region }
+        auth_url: { get_secret: openstack_auth_url }
+      use_external_resource: true
+      resource_config:
+        id: { get_capability: [{get_input: openstack_network_deployment_name}, "external_network"] }
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: network_topology
+
+  mgmt_network:
+    type: cloudify.nodes.openstack.Network
+    properties:
+      client_config:
+        password: { get_secret: openstack_password }
+        username: { get_secret: openstack_username }
+        project_name: { get_secret: openstack_tenant_name }
+        region_name: { get_secret: openstack_region }
+        auth_url: { get_secret: openstack_auth_url }
+      use_external_resource: true
+      resource_config:
+        id: { get_capability: [{get_input: openstack_network_deployment_name}, "mgmt_network"] }
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: network_topology
+
+  lan_network:
+    type: cloudify.nodes.openstack.Network
+    properties:
+      client_config:
+        password: { get_secret: openstack_password }
+        username: { get_secret: openstack_username }
+        project_name: { get_secret: openstack_tenant_name }
+        region_name: { get_secret: openstack_region }
+        auth_url: { get_secret: openstack_auth_url }
+      use_external_resource: true
+      resource_config:
+        id: { get_capability: [{get_input: openstack_network_deployment_name}, "lan_network"] }
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: network_topology
+
+  network_security_group:
+    type: cloudify.nodes.openstack.SecurityGroup
+    properties:
+      client_config:
+        password: { get_secret: openstack_password }
+        username: { get_secret: openstack_username }
+        project_name: { get_secret: openstack_tenant_name }
+        region_name: { get_secret: openstack_region }
+        auth_url: { get_secret: openstack_auth_url }
+      use_external_resource: true
+      resource_config:
+        id: { get_capability: [{get_input: openstack_network_deployment_name}, "network_security_group"] }
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: network_topology
+
+  mgmt_floating_ip_address:
+    type: cloudify.nodes.openstack.FloatingIP
+    properties:
+      client_config:
+        password: { get_secret: openstack_password }
+        username: { get_secret: openstack_username }
+        project_name: { get_secret: openstack_tenant_name }
+        region_name: { get_secret: openstack_region }
+        auth_url: { get_secret: openstack_auth_url }
+    relationships:
+      - type: cloudify.relationships.connected_to
+        target: external_network
+      - type: cloudify.relationships.connected_to
+        target: mgmt_port
+
+  mgmt_port:
+    type: cloudify.nodes.openstack.Port
+    properties:
+      client_config:
+        password: { get_secret: openstack_password }
+        username: { get_secret: openstack_username }
+        project_name: { get_secret: openstack_tenant_name }
+        region_name: { get_secret: openstack_region }
+        auth_url: { get_secret: openstack_auth_url }
+      resource_config:
+        name: { concat: [{get_input: resource_prefix}, "_webserver_mgmt_port", {get_input: resource_suffix}] }
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: mgmt_network
+      - type: cloudify.relationships.openstack.port_connected_to_security_group
+        target: network_security_group
+
+  lan_port:
+    type: cloudify.nodes.openstack.Port
+    properties:
+      client_config:
+        password: { get_secret: openstack_password }
+        username: { get_secret: openstack_username }
+        project_name: { get_secret: openstack_tenant_name }
+        region_name: { get_secret: openstack_region }
+        auth_url: { get_secret: openstack_auth_url }
+      resource_config:
+        name: { concat: [{get_input: resource_prefix}, "_webserver_lan_port", {get_input: resource_suffix}] }
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: lan_network
+      - type: cloudify.relationships.openstack.port_connected_to_security_group
+        target: network_security_group
+
+  image:
+    type: cloudify.nodes.openstack.Image
+    properties:
+      resource_config:
+        id: { get_input: image_id }
+        container_format: bare
+        disk_format: qcow2
+      client_config:
+        password: { get_secret: openstack_password }
+        username: { get_secret: openstack_username }
+        project_name: { get_secret: openstack_tenant_name }
+        region_name: { get_secret: openstack_region }
+        auth_url: { get_secret: openstack_auth_url }
+      use_external_resource: true
+
+  keypair:
+    type: cloudify.nodes.keys.RSAKey
+    properties:
+      resource_config:
+        public_key_path: { concat: ["/etc/cloudify/.ssh/", {get_input: resource_prefix}, "_webserver_keypair", {get_input: resource_suffix}, ".pub"] }
+        private_key_path: { concat: ["/etc/cloudify/.ssh/", {get_input: resource_prefix}, "_webserver_keypair", {get_input: resource_suffix}, ".pem"] }
+        openssh_format: true
+      use_secret_store: false
+      key_name: { concat: [{get_input: resource_prefix}, "_webserver_keypair", {get_input: resource_suffix}] }
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: keys.cloudify_ssh_key.operations.create
+          inputs:
+            store_private_key_material: true
+
+  cloud_config:
+    type: cloudify.nodes.CloudInit.CloudConfig
+    properties:
+      resource_config:
+        users:
+          - name: ubuntu
+            shell: /bin/bash
+            sudo:
+              - ALL=(ALL) NOPASSWD:ALL
+            ssh-authorized-keys:
+              - { get_attribute: ["keypair", "public_key_export"] }
+        write_files:
+          - path: /home/ubuntu/index.html
+            permissions: 420
+            owner: ubuntu:ubuntu
+            content: { get_secret: webserver_website }
+        runcmd:
+          - ifconfig ens4 up
+          - dhclient ens4
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: keypair
+
+  vm:
+    type: cloudify.nodes.openstack.Server
+    properties:
+      client_config:
+        password: { get_secret: openstack_password }
+        username: { get_secret: openstack_username }
+        project_name: { get_secret: openstack_tenant_name }
+        region_name: { get_secret: openstack_region }
+        auth_url: { get_secret: openstack_auth_url }
+      agent_config:
+        install_method: none
+      resource_config:
+        name: { concat: [{get_input: resource_prefix}, "_webserver_vm", {get_input: resource_suffix}] }
+        image_id: { get_attribute: ["image", "id"] }
+        flavor_id: { get_input: flavor_id }
+        user_data: { get_attribute: ["cloud_config", "cloud_config"] }
+    relationships:
+      - type: cloudify.relationships.openstack.server_connected_to_port
+        target: mgmt_port
+      - type: cloudify.relationships.openstack.server_connected_to_port
+        target: lan_port
+      - type: cloudify.relationships.depends_on
+        target: image
+      - type: cloudify.relationships.depends_on
+        target: cloud_config
+capabilities:
+
+  vm_public_ip:
+    description: vm public ip
+    value: { get_attribute: ["mgmt_floating_ip_address", "floating_ip_address"] }
+
+  lan_ip:
+    description: lan port ip
+    value: { get_attribute: ["lan_port", "fixed_ips", 0, "ip_address"] }
+
+  private_key_content:
+    description: private key content
+    value: { get_attribute: ["keypair", "private_key_export"] }
+

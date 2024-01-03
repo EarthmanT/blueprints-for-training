@@ -73,7 +73,7 @@ node_templates:
             ip: { get_attribute: ["SELF", "resources", "eip", "instances", 0, "attributes", "public_ip"] }
 
   agent_key:
-    type: cloudify.keys.nodes.RSAKey
+    type: cloudify.nodes.keys.RSAKey
     properties:
       resource_config:
         key_name: { get_input: agent_key_name }

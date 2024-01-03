@@ -1,4 +1,5 @@
 tosca_definitions_version: cloudify_dsl_1_5
+description: This blueprint creates VMs and network in GCP and installs on them Kubernetes using kubespray ansible role.
 
 imports:
 
@@ -244,7 +245,7 @@ node_templates:
         target: agent_key
 
   agent_key:
-    type: cloudify.keys.nodes.RSAKey
+    type: cloudify.nodes.keys.RSAKey
     properties:
       resource_config:
         key_name: { get_input: agent_key_name }

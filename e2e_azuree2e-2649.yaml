@@ -1,0 +1,183 @@
+tosca_definitions_version: cloudify_dsl_1_5
+description: >
+
+  This is the master blueprint for the Cloudify VNF example. It provisions all the atomic components, configures, and then chains them together. In partilucar:
+    * prepares the environment, including networks, subnets, security groups etc.
+    * provisions F5 BIG-IP VM
+    * provisions Fortigate VM
+    * provisions webserver VM
+    * configures F5 BIG-IP
+    * configures Fortigate
+    * configures webserver
+    * creates a service chain to allow traffic forwarding
+
+imports:
+
+  - cloudify/types/types.yaml
+  - plugin:cloudify-utilities-plugin
+
+inputs:
+
+
+  network_prov_name:
+    display_label: Network Prov Name
+    type: string
+    description: Name of network resources provisioning blueprint/deployment
+    default: VNFM-Networking-Prov-Azure-networks
+
+  f5_prov_name:
+    display_label: F5 Prov Name
+    type: string
+    description: Name of BIG IP Provisioning blueprint/deployment
+    default: VNFM-F5-Prov-Azure-vm
+
+  f5_conf_name:
+    display_label: F5 Conf Name
+    type: string
+    description: Name of BIG IP Configuration blueprint/deployment
+    default: VNFM-F5-Conf
+
+  fg_prov_name:
+    display_label: Fg Prov Name
+    type: string
+    description: Name of Fortigate Provisioning blueprint/deployment
+    default: VNFM-Fortigate-Prov-Azure-vm
+
+  fg_conf_name:
+    display_label: Fg Conf Name
+    type: string
+    description: Name of Fortigate Configuration blueprint/deployment
+    default: VNFM-Fortigate-Conf
+
+  webserver_prov_name:
+    display_label: Webserver Prov Name
+    type: string
+    description: Name of webserver Provisioning blueprint/deployment
+    default: VNFM-webserver-Prov-Azure-vm
+
+  webserver_conf_name:
+    display_label: Webserver Conf Name
+    type: string
+    description: Name of webserver Configuration blueprint/deployment
+    default: VNFM-webserver-Conf
+
+  service_prov_name:
+    display_label: Service Prov Name
+    type: string
+    description: Name of service chain Provisioning blueprint/deployment
+    default: NS-LB-Firewall-F5-Fortigate-webserver
+
+node_templates:
+
+
+  network_prov:
+    type: cloudify.nodes.Component
+    properties:
+      resource_config:
+        blueprint:
+          id: { get_input: network_prov_name }
+          blueprint_archive: Resources/network-topology.zip
+          main_file_name: azure.yaml
+        deployment:
+          id: { get_input: network_prov_name }
+
+  f5_prov:
+    type: cloudify.nodes.Component
+    properties:
+      resource_config:
+        blueprint:
+          id: { get_input: f5_prov_name }
+          blueprint_archive: Resources/bigip.zip
+          main_file_name: azure.yaml
+        deployment:
+          id: { get_input: f5_prov_name }
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: network_prov
+
+  fg_prov:
+    type: cloudify.nodes.Component
+    properties:
+      resource_config:
+        blueprint:
+          id: { get_input: fg_prov_name }
+          blueprint_archive: Resources/fortigate.zip
+          main_file_name: azure.yaml
+        deployment:
+          id: { get_input: fg_prov_name }
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: network_prov
+
+  webserver_prov:
+    type: cloudify.nodes.Component
+    properties:
+      resource_config:
+        blueprint:
+          id: { get_input: webserver_prov_name }
+          blueprint_archive: Resources/webserver.zip
+          main_file_name: azure.yaml
+        deployment:
+          id: { get_input: webserver_prov_name }
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: network_prov
+
+  f5_conf:
+    type: cloudify.nodes.Component
+    properties:
+      resource_config:
+        blueprint:
+          id: { get_input: f5_conf_name }
+          blueprint_archive: Resources/bigip.zip
+          main_file_name: azureapp.yaml
+        deployment:
+          id: { get_input: f5_conf_name }
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: f5_prov
+
+  fg_conf:
+    type: cloudify.nodes.Component
+    properties:
+      resource_config:
+        blueprint:
+          id: { get_input: fg_conf_name }
+          blueprint_archive: Resources/fortigate.zip
+          main_file_name: azureapp.yaml
+        deployment:
+          id: { get_input: fg_conf_name }
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: fg_prov
+
+  webserver_conf:
+    type: cloudify.nodes.Component
+    properties:
+      resource_config:
+        blueprint:
+          id: { get_input: webserver_conf_name }
+          blueprint_archive: Resources/webserver.zip
+          main_file_name: azureapp.yaml
+        deployment:
+          id: { get_input: webserver_conf_name }
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: webserver_prov
+
+  service_prov:
+    type: cloudify.nodes.Component
+    properties:
+      resource_config:
+        blueprint:
+          id: { get_input: service_prov_name }
+          blueprint_archive: Resources/service.zip
+          main_file_name: azure_service.yaml
+        deployment: {}
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        configure: {}
+        start: {}
+        stop: {}
+        delete: {}
+
