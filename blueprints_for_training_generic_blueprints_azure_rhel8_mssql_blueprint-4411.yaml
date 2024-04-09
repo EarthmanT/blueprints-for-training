@@ -1,0 +1,384 @@
+tosca_definitions_version: nativeedge_1_0
+
+imports:
+  - nativeedge/types/types.yaml
+  - plugin:nativeedge-azure-plugin
+  - plugin:nativeedge-utilities-plugin
+  - plugin:nativeedge-fabric-plugin
+
+inputs:
+
+  env_name:
+    type: string
+    description: Control parameters for names in resources.
+    default: cfyahmad
+
+  resource_prefix:
+    default: { get_input: env_name }
+
+  resource_suffix:
+    default: '0'
+
+  location:
+    type: string
+    description: Your Azure Region.
+    default: eastus2
+    constraints:
+      - valid_values:
+          - centralus
+          - eastus
+          - eastus2
+          - westus
+          - northcentralus
+          - southcentralus
+          - westcentralus
+          - westus2
+          - northeurope
+          - westeurope
+          - uksouth
+          - ukwest
+          - francecentral
+          - francesouth
+          - switzerlandnorth
+          - switzerlandwest
+          - germanynorth
+          - germanywestcentral
+          - norwaywest
+          - norwayeast
+          - canadacentral
+          - canadaeast
+          - brazilsouth
+          - southafricanorth
+          - southafricawest
+          - eastasia
+          - southeastasia
+          - japanwest
+          - japaneast
+          - southindia
+          - centralindia
+          - westindia
+          - koreacentral
+          - koreasouth
+          - uaecentral
+          - uaenorth
+          - australiaeast
+          - australiasoutheast
+          - australiacentral
+          - australiacentral2
+
+  image:
+    description: >
+      Image to use.
+    default:
+      publisher: RedHat
+      offer: RHEL
+      sku: 8-LVM
+      version: 8.1.20200318
+
+  size:
+    description: >
+      Name of Virtual Machine Size in Azure.
+    type: string
+    default: Standard_B2s
+    constraints:
+      - valid_values:
+          - Standard_B1s
+          - Standard_B1ms
+          - Standard_B2s
+          - Standard_B2ms
+          - Standard_B4ms
+          - Standard_B8ms
+          - Standard_B12ms
+          - Standard_B16ms
+          - Standard_B20ms
+
+  retry_after:
+    type: integer
+    default: 60
+
+  agent_user:
+    description: The user name of the agent on the instance created from the image.
+    default: cloud-user
+
+  agent_key_name:
+    type: string
+    default: agent_key
+
+dsl_definitions:
+
+  azure_config:
+    subscription_id: { get_secret: azure_subscription_id }
+    tenant_id: { get_secret: azure_tenant_id }
+    client_id: { get_secret: azure_client_id }
+    client_secret: { get_secret: azure_client_secret }
+
+node_templates:
+
+  vm:
+    type: nativeedge.nodes.azurecompute.VirtualMachine
+    properties:
+      location: { get_input: location }
+      retry_after: { get_input: retry_after }
+      os_family: linux
+      azure_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      resource_config:
+        hardwareProfile:
+          vmSize: { get_input: size }
+        storageProfile:
+          imageReference: { get_input: image }
+        osProfile:
+          adminUsername: { get_input: agent_user }
+          adminPassword: ''
+          linuxConfiguration:
+            ssh:
+              publicKeys:
+                - keydata: { get_attribute: ["agent_key", "public_key_export"] }
+                  path: { concat: ["/home/", {get_input: agent_user}, "/.ssh/authorized_keys"] }
+            disablePasswordAuthentication: true
+      agent_config:
+        install_method: none
+        key: { get_attribute: ["agent_key", "private_key_export"] }
+        user: { get_input: agent_user }
+      use_public_ip: true
+    relationships:
+      - type: nativeedge.relationships.azure.contained_in_resource_group
+        target: resource_group
+      - type: nativeedge.relationships.azure.connected_to_storage_account
+        target: storage_account
+      - type: nativeedge.relationships.azure.connected_to_availability_set
+        target: availability_set
+      - type: nativeedge.relationships.azure.connected_to_nic
+        target: nic
+      - type: nativeedge.relationships.depends_on
+        target: agent_key
+
+  nic:
+    type: nativeedge.nodes.azurenetwork.NetworkInterfaceCard
+    properties:
+      location: { get_input: location }
+      azure_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      retry_after: { get_input: retry_after }
+    relationships:
+      - type: nativeedge.relationships.azure.contained_in_resource_group
+        target: resource_group
+      - type: nativeedge.relationships.azure.nic_connected_to_network_security_group
+        target: network_security_group
+      - type: nativeedge.relationships.azure.nic_connected_to_ip_configuration
+        target: ip_config
+
+  ip_config:
+    type: nativeedge.nodes.azurenetwork.IPConfiguration
+    properties:
+      location: { get_input: location }
+      azure_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      retry_after: { get_input: retry_after }
+      resource_config:
+        privateIPAllocationMethod: Dynamic
+    relationships:
+      - type: nativeedge.relationships.azure.ip_configuration_connected_to_subnet
+        target: subnet
+      - type: nativeedge.relationships.azure.ip_configuration_connected_to_public_ip
+        target: ip
+
+  network_security_group:
+    type: nativeedge.nodes.azurenetwork.NetworkSecurityGroup
+    properties:
+      name: { concat: [{get_input: resource_prefix}, "nsg", {get_input: resource_suffix}] }
+      location: { get_input: location }
+      azure_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      retry_after: { get_input: retry_after }
+      resource_config:
+        securityRules:
+          - name: ssh
+            properties:
+              description: SSH access
+              protocol: Tcp
+              sourcePortRange: '*'
+              destinationPortRange: 22
+              sourceAddressPrefix: '*'
+              destinationAddressPrefix: '*'
+              priority: 100
+              access: Allow
+              direction: Inbound
+          - name: http
+            properties:
+              description: HTTP access
+              protocol: Tcp
+              sourcePortRange: '*'
+              destinationPortRange: 80
+              sourceAddressPrefix: '*'
+              destinationAddressPrefix: '*'
+              priority: 101
+              access: Allow
+              direction: Inbound
+          - name: mssql_port
+            properties:
+              description: HTTP access
+              protocol: Tcp
+              sourcePortRange: '*'
+              destinationPortRange: 1433
+              sourceAddressPrefix: '*'
+              destinationAddressPrefix: '*'
+              priority: 102
+              access: Allow
+              direction: Inbound
+    relationships:
+      - type: nativeedge.relationships.azure.contained_in_resource_group
+        target: resource_group
+
+  ip:
+    type: nativeedge.nodes.azurenetwork.PublicIPAddress
+    properties:
+      location: { get_input: location }
+      azure_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      retry_after: { get_input: retry_after }
+      resource_config:
+        publicIPAllocationMethod: Static
+    relationships:
+      - type: nativeedge.relationships.azure.contained_in_resource_group
+        target: resource_group
+
+  availability_set:
+    type: nativeedge.nodes.azurecompute.AvailabilitySet
+    properties:
+      name: { concat: [{get_input: resource_prefix}, "availset", {get_input: resource_suffix}] }
+      location: { get_input: location }
+      azure_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      retry_after: { get_input: retry_after }
+    relationships:
+      - type: nativeedge.relationships.azure.contained_in_resource_group
+        target: resource_group
+
+  storage_account:
+    type: nativeedge.nodes.azurestorage.StorageAccount
+    properties:
+      location: { get_input: location }
+      azure_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      retry_after: { get_input: retry_after }
+      resource_config:
+        accountType: Standard_LRS
+    relationships:
+      - type: nativeedge.relationships.azure.contained_in_resource_group
+        target: resource_group
+
+  subnet:
+    type: nativeedge.nodes.azurenetwork.Subnet
+    properties:
+      resource_group_name: { concat: [{get_input: resource_prefix}, "rg", {get_input: resource_suffix}] }
+      name: { concat: [{get_input: resource_prefix}, "sub", {get_input: resource_suffix}] }
+      azure_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      location: { get_input: location }
+      resource_config:
+        addressPrefix: 10.10.0.0/24
+    relationships:
+      - type: nativeedge.relationships.azure.contained_in_virtual_network
+        target: network
+
+  network:
+    type: nativeedge.nodes.azurenetwork.VirtualNetwork
+    properties:
+      resource_group_name: { concat: [{get_input: resource_prefix}, "rg", {get_input: resource_suffix}] }
+      name: { concat: [{get_input: resource_prefix}, "vn", {get_input: resource_suffix}] }
+      azure_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      location: { get_input: location }
+    relationships:
+      - type: nativeedge.relationships.azure.contained_in_resource_group
+        target: resource_group
+
+  resource_group:
+    type: nativeedge.nodes.azureResourceGroup
+    properties:
+      name: { concat: [{get_input: resource_prefix}, "rg", {get_input: resource_suffix}] }
+      location: { get_input: location }
+      azure_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+
+  agent_key:
+    type: nativeedge.nodes.keys.RSAKey
+    properties:
+      resource_config:
+        key_name: { get_input: agent_key_name }
+        openssh_format: true
+      use_secret_store: true
+      use_secrets_if_exist: true
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: keys.ne_ssh_key.operations.create
+          inputs:
+            store_private_key_material: true
+
+  mssql_server:
+    type: nativeedge.nodes.ApplicationServer
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        configure:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: scripts/configure_mssql.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm", "public_ip"] }
+              user: { get_input: agent_user }
+              key: { get_attribute: ["agent_key", "private_key_export"] }
+            process:
+              env:
+                rhel_sub_username: { get_secret: rhel_sub_username }
+                rhel_sub_password: { concat: ["", {get_secret: rhel_sub_password}, ""] }
+                mssql_user: cloudify
+                mssql_password: cfy#1234
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm
+capabilities:
+
+  endpoint:
+    description: The external endpoint of the application.
+    value: { get_attribute: ["vm", "public_ip"] }
+
+  user:
+    description: user ID.
+    value: { get_input: agent_user }
+
+  key_content:
+    description: Private agent key
+    value: { get_attribute: ["agent_key", "private_key_export"] }
+
