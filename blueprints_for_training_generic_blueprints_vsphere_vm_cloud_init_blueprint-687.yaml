@@ -1,0 +1,232 @@
+tosca_definitions_version: nativeedge_1_0
+description: Creates a new vm in vsphere with cloud init.
+
+imports:
+  - nativeedge/types/types.yaml
+  - plugin:nativeedge-vsphere-plugin
+  - plugin:nativeedge-utilites-plugin
+
+inputs:
+
+  template_name:
+    type: string
+    default: Ubuntu-EO-Template
+    description: VM template available in datastore for ESXi hosts
+    display_label: vSphere Template Name
+
+  cpus:
+    type: integer
+    default: 16
+    description: Number of virtual CPUs allocated to the VM
+    display_label: CPUs
+
+  memory:
+    type: integer
+    default: 32768
+    description: Number of RAM MB allocated to the VM
+    display_label: Memory
+
+  external_network:
+    type: string
+    display_label: External Network Name
+    description: External Network to deploy the VM on
+    default: vlan-1710
+
+  external_network_distributed:
+    type: boolean
+    display_label: Is External Network Distributed
+    description: Whether the external network is on Distributed Switch
+    default: true
+
+  management_network:
+    type: string
+    display_label: Management Network Name
+    description: Management Network to deploy the VM on
+    default: Management Network-f96d4e19-aa8e-488e-a3c2-c57bf1775851
+
+  management_network_distributed:
+    type: boolean
+    display_label: Is Management Network Distributed
+    description: Whether the management network is on Distributed Switch
+    default: true
+
+  resource_pool_name:
+    type: string
+    display_label: Resource Pool Name
+    description: resource pool inside vsphere where the VM would be created
+    default: Resources
+
+  vm_name:
+    type: string
+    display_label: VM Name
+    description: VM name inside vsphere
+
+  disk_size:
+    type: integer
+    display_label: VM disk size
+    description: VM OS disk size
+    default: 100
+
+dsl_definitions:
+
+  connection_config:
+    username: { get_secret: ["vsphere", "username"] }
+    password: { get_secret: ["vsphere", "password"] }
+    host: { get_secret: ["vsphere", "host"] }
+    port: { get_secret: ["vsphere", "port"] }
+    datacenter_name: { get_secret: ["vsphere", "datacenter_name"] }
+    resource_pool_name: { get_input: resource_pool_name }
+    auto_placement: { get_secret: ["vsphere", "auto_placement"] }
+    allow_insecure: true
+
+node_templates:
+
+  agent_key:
+    type: nativeedge.nodes.keys.RSAKey
+    properties:
+      resource_config:
+        key_name: { get_input: agent_key_name }
+        openssh_format: true
+      use_secret_store: true
+      use_secrets_if_exist: true
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: keys.ne_ssh_key.operations.create
+          inputs:
+            store_private_key_material: true
+
+  cloud_init:
+    type: nativeedge.nodes.CloudInit.CloudConfig
+    properties:
+      resource_config:
+        users:
+          - name: { get_input: agent_user }
+            shell: /bin/bash
+            sudo:
+              - ALL=(ALL) NOPASSWD:ALL
+            ssh-authorized-keys:
+              - { get_attribute: ["agent_key", "public_key_export"] }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: agent_key
+
+  cloud_init_meta:
+    type: nativeedge.nodes.CloudInit.CloudConfig
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          inputs:
+            resource_config:
+              instance-id: vsphere_cloudinit
+
+  vsphere_vm:
+    type: nativeedge.nodes.vsphere.Server
+    properties:
+      use_external_resource: false
+      connection_config:
+        username: { get_secret: ["vsphere", "username"] }
+        password: { get_secret: ["vsphere", "password"] }
+        host: { get_secret: ["vsphere", "host"] }
+        port: { get_secret: ["vsphere", "port"] }
+        datacenter_name: { get_secret: ["vsphere", "datacenter_name"] }
+        resource_pool_name: { get_input: resource_pool_name }
+        auto_placement: { get_secret: ["vsphere", "auto_placement"] }
+        allow_insecure: true
+      agent_config:
+        install_method: none
+      wait_ip: false
+      server:
+        name: { get_input: vm_name }
+        template: { get_input: template_name }
+        cpus: { get_input: cpus }
+        memory: { get_input: memory }
+        disk_size: { get_input: disk_size }
+      networking:
+        connect_networks:
+          - name: { get_input: management_network }
+            switch_distributed: { get_input: management_network_distributed }
+            management: true
+            use_dhcp: true
+          - name: { get_input: external_network }
+            switch_distributed: { get_input: external_network_distributed }
+            management: false
+            external: true
+            use_dhcp: true
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start: {}
+      nativeedge.interfaces.host:
+        get_state: {}
+
+  cloud_init_image:
+    type: nativeedge.nodes.vsphere.CloudInitISO
+    properties:
+      connection_config:
+        username: { get_secret: ["vsphere", "username"] }
+        password: { get_secret: ["vsphere", "password"] }
+        host: { get_secret: ["vsphere", "host"] }
+        port: { get_secret: ["vsphere", "port"] }
+        datacenter_name: { get_secret: ["vsphere", "datacenter_name"] }
+        resource_pool_name: { get_input: resource_pool_name }
+        auto_placement: { get_secret: ["vsphere", "auto_placement"] }
+        allow_insecure: true
+      datacenter_name: { get_secret: ["vsphere", "datacenter_name"] }
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          inputs:
+            allowed_datastore_ids: { get_attribute: ["vsphere_vm", "datastore_ids"] }
+            vol_ident: cidata
+            files:
+              meta-data: { get_attribute: ["cloud_init_meta", "cloud_config"] }
+              user-data: { get_attribute: ["cloud_init", "cloud_config"] }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: cloud_init_meta
+      - type: nativeedge.relationships.depends_on
+        target: cloud_init
+      - type: nativeedge.relationships.depends_on
+        target: vsphere_vm
+
+  vsphere_vm_cloud_init:
+    type: nativeedge.nodes.vsphere.Server
+    properties:
+      wait_ip: true
+      use_external_resource: true
+      force_stop: true
+      connection_config:
+        username: { get_secret: ["vsphere", "username"] }
+        password: { get_secret: ["vsphere", "password"] }
+        host: { get_secret: ["vsphere", "host"] }
+        port: { get_secret: ["vsphere", "port"] }
+        datacenter_name: { get_secret: ["vsphere", "datacenter_name"] }
+        resource_pool_name: { get_input: resource_pool_name }
+        auto_placement: { get_secret: ["vsphere", "auto_placement"] }
+        allow_insecure: true
+      agent_config:
+        install_method: none
+      cdrom_image: { get_attribute: ["cloud_init_image", "storage_image"] }
+      server:
+        name: { get_attribute: ["vsphere_vm", "name"] }
+        template: { get_input: template_name }
+        cpus: { get_input: cpus }
+        memory: { get_input: memory }
+        disk_size: { get_input: disk_size }
+      networking:
+        connect_networks:
+          - name: { get_input: management_network }
+            switch_distributed: { get_input: management_network_distributed }
+            management: true
+            use_dhcp: true
+          - name: { get_input: external_network }
+            switch_distributed: { get_input: external_network_distributed }
+            management: false
+            external: true
+            use_dhcp: true
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: cloud_init_image
+      - type: nativeedge.relationships.depends_on
+        target: vsphere_vm
+

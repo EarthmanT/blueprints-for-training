@@ -1,0 +1,26 @@
+tosca_definitions_version: nativeedge_1_0
+
+imports:
+  - nativeedge/types/types.yaml
+
+node_templates:
+
+  some_node:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: scripts/create_files.py
+          executor: central_deployment_agent
+
+  another_node:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: scripts/list_files.py
+          executor: central_deployment_agent
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: some_node
+

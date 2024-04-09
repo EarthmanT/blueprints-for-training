@@ -1,0 +1,91 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  This blueprint creates infrastructure on AWS using Terraform. Then runs ansible playbook that installs an application on top of it.
+
+imports:
+  - nativeedge/types/types.yaml
+  - plugin:nativeedge-terraform-plugin?version= >=0.15.0
+  - plugin:nativeedge-utilities-plugin?version= >=1.22.1
+  - plugin:nativeedge-ansible-plugin
+  - includes/hello-world-ansible.yaml
+
+inputs:
+
+  agent_user:
+    display_label: Agent User
+    description: >
+      The username of the agent running on the instance created from the image.
+    type: string
+    default: ubuntu
+
+  aws_region_name:
+    display_label: Aws Region Name
+    type: string
+    default: us-east-1
+
+  aws_zone_name:
+    display_label: Aws Zone Name
+    type: string
+    default: { concat: [{get_input: aws_region_name}, "d"] }
+
+  agent_key_name:
+    display_label: Agent Key Name
+    type: string
+    default: agent_key
+
+node_templates:
+
+  terraform:
+    type: nativeedge.nodes.terraform
+    properties:
+      resource_config:
+        use_existing_resource: false
+
+  vm:
+    type: nativeedge.nodes.terraform.Module
+    properties:
+      resource_config:
+        source:
+          location: resources/terraform/template.zip
+        variables:
+          access_key: { get_secret: aws_access_key_id }
+          secret_key: { get_secret: aws_secret_access_key }
+          aws_session_token: { get_secret: aws_session_token }
+          aws_region: { get_input: aws_region_name }
+          aws_zone: { get_input: aws_zone_name }
+          admin_user: { get_input: agent_user }
+          admin_key_public: { get_attribute: ["agent_key", "public_key_export"] }
+    relationships:
+      - target: terraform
+        type: nativeedge.relationships.terraform.run_on_host
+      - target: agent_key
+        type: nativeedge.relationships.depends_on
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        poststart:
+          implementation: scripts/terraform/expose_ip.py
+          executor: central_deployment_agent
+          inputs:
+            ip: { get_attribute: ["SELF", "resources", "eip", "instances", 0, "attributes", "public_ip"] }
+
+  agent_key:
+    type: nativeedge.nodes.keys.RSAKey
+    properties:
+      resource_config:
+        key_name: { get_input: agent_key_name }
+        openssh_format: true
+      use_secret_store: true
+      use_secrets_if_exist: true
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: keys.ne_ssh_key.operations.create
+          inputs:
+            store_private_key_material: true
+outputs:
+
+  application_endpoint:
+    description: The external endpoint of the application.
+    value: { concat: ["http://", {get_attribute: [vm, resources, eip, instances, 0, attributes, public_ip]}, ":80"] }
+

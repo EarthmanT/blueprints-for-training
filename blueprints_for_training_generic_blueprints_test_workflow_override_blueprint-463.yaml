@@ -1,0 +1,39 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  This blueprint mock runtime for a node and use it later.
+
+imports:
+  - otherstuff.yaml
+
+node_templates:
+
+  another_node:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start: >
+          from cloudify import ctx
+
+          ctx.logger.info('in start')
+        stop: >
+          from cloudify import ctx
+
+          ctx.logger.info('in stop')
+
+  some_node:
+    type: nativeedge.nodes.Root
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: another_node
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start: >
+          from cloudify import ctx
+
+          ctx.logger.info('in start')
+        stop: >
+          from cloudify import ctx
+
+          ctx.logger.info('in stop')
+

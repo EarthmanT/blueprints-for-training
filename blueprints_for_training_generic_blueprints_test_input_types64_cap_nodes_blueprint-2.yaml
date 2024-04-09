@@ -1,0 +1,33 @@
+tosca_definitions_version: nativeedge_1_0
+
+imports:
+  - nativeedge/types/types.yaml
+node_types:
+
+  nativeedge.nodes.Ahmad:
+    derived_from: nativeedge.nodes.Root
+
+node_templates:
+
+  ahmad_test:
+    type: nativeedge.nodes.Ahmad
+groups:
+
+  ahmad_test_grp:
+    members:
+      - ahmad_test
+policies:
+
+  scale_policy:
+    type: nativeedge.policies.scaling
+    properties:
+      default_instances: 1
+      min_instances: 1
+      max_instances: 3
+    targets:
+      - ahmad_test_grp
+capabilities:
+
+  new_capability:
+    value: what the hell new?
+

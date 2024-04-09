@@ -1,0 +1,307 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  This blueprint installs an application using Cloudify on AWS.
+
+imports:
+  - nativeedge/types/types.yaml
+  - plugin:nativeedge-aws-plugin
+  - plugin:nativeedge-ansible-plugin
+  - plugin:nativeedge-utilities-plugin?version= >=1.22.1
+  - includes/hello-world-ansible.yaml
+
+inputs:
+
+  env_name:
+    display_label: Env Name
+    type: string
+    default: helloworldexampleaws
+
+  aws_region_name:
+    display_label: Aws Region Name
+    type: string
+    description: The AWS region name, such as us-east-1 or us-west-1.
+    default: us-east-1
+
+  availability_zone:
+    display_label: Availability Zone
+    type: string
+    description: The availability zone in the AWS Region.
+    default: { concat: [{get_input: aws_region_name}, "b"] }
+
+  ami_owner_filter:
+    display_label: Ami Owner Filter
+    type: string
+    description: The AWS AMI owner number.
+    default: 099720109477
+
+  ami_name_filter:
+    display_label: Ami Name Filter
+    type: string
+    description: The name of the AWS AMI in the AWS region.
+    default: ubuntu/images/hvm-ssd/ubuntu-xenial-16.04-amd64-server-*
+
+  agent_user:
+    display_label: Agent User
+    type: string
+    description: >
+      The username of the agent running on the instance created from the image.
+    default: ubuntu
+
+  agent_key_name:
+    display_label: Agent Key Name
+    type: string
+    default: agent_key
+
+dsl_definitions:
+
+  client_config:
+    aws_access_key_id: { get_secret: aws_access_key_id }
+    aws_secret_access_key: { get_secret: aws_secret_access_key }
+    aws_session_token: { get_secret: aws_session_token }
+    region_name: { get_input: aws_region_name }
+
+node_templates:
+
+  vm:
+    type: nativeedge.nodes.aws.ec2.Instances
+    properties:
+      client_config:
+        aws_access_key_id: { get_secret: aws_access_key_id }
+        aws_secret_access_key: { get_secret: aws_secret_access_key }
+        aws_session_token: { get_secret: aws_session_token }
+        region_name: { get_input: aws_region_name }
+      agent_config:
+        install_method: none
+        user: { get_input: agent_user }
+        key: { get_attribute: ["agent_key", "private_key_export"] }
+      resource_config:
+        ImageId: { get_attribute: ["ami", "aws_resource_id"] }
+        InstanceType: t2.micro
+        kwargs:
+          UserData: { get_attribute: ["cloud_init", "cloud_config"] }
+      use_public_ip: true
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: ami
+      - type: nativeedge.relationships.depends_on
+        target: nic
+      - type: nativeedge.relationships.depends_on
+        target: ip
+      - type: nativeedge.relationships.depends_on
+        target: cloud_init
+      - type: nativeedge.relationships.depends_on
+        target: agent_key
+
+  ami:
+    type: nativeedge.nodes.aws.ec2.Image
+    properties:
+      resource_config:
+        kwargs:
+          Filters:
+            - Name: name
+              Values:
+                - { get_input: ami_name_filter }
+            - Name: owner-id
+              Values:
+                - { get_input: ami_owner_filter }
+      client_config:
+        aws_access_key_id: { get_secret: aws_access_key_id }
+        aws_secret_access_key: { get_secret: aws_secret_access_key }
+        aws_session_token: { get_secret: aws_session_token }
+        region_name: { get_input: aws_region_name }
+
+  ip:
+    type: nativeedge.nodes.aws.ec2.ElasticIP
+    properties:
+      client_config:
+        aws_access_key_id: { get_secret: aws_access_key_id }
+        aws_secret_access_key: { get_secret: aws_secret_access_key }
+        aws_session_token: { get_secret: aws_session_token }
+        region_name: { get_input: aws_region_name }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: nic
+
+  nic:
+    type: nativeedge.nodes.aws.ec2.Interface
+    properties:
+      client_config:
+        aws_access_key_id: { get_secret: aws_access_key_id }
+        aws_secret_access_key: { get_secret: aws_secret_access_key }
+        aws_session_token: { get_secret: aws_session_token }
+        region_name: { get_input: aws_region_name }
+      resource_config:
+        kwargs:
+          Description: Created by nativeedge-hello-world-example.
+          SubnetId: { get_attribute: ["subnet", "aws_resource_id"] }
+          Groups:
+            - { get_attribute: ["security_group", "aws_resource_id"] }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: security_group
+      - type: nativeedge.relationships.depends_on
+        target: subnet
+
+  security_group_rules:
+    type: nativeedge.nodes.aws.ec2.SecurityGroupRuleIngress
+    properties:
+      client_config:
+        aws_access_key_id: { get_secret: aws_access_key_id }
+        aws_secret_access_key: { get_secret: aws_secret_access_key }
+        aws_session_token: { get_secret: aws_session_token }
+        region_name: { get_input: aws_region_name }
+      resource_config:
+        IpPermissions:
+          - IpProtocol: tcp
+            FromPort: 22
+            ToPort: 22
+            IpRanges:
+              - CidrIp: 0.0.0.0/0
+          - IpProtocol: tcp
+            FromPort: 80
+            ToPort: 80
+            IpRanges:
+              - CidrIp: 0.0.0.0/0
+    relationships:
+      - type: nativeedge.relationships.contained_in
+        target: security_group
+
+  security_group:
+    type: nativeedge.nodes.aws.ec2.SecurityGroup
+    properties:
+      client_config:
+        aws_access_key_id: { get_secret: aws_access_key_id }
+        aws_secret_access_key: { get_secret: aws_secret_access_key }
+        aws_session_token: { get_secret: aws_session_token }
+        region_name: { get_input: aws_region_name }
+      resource_config:
+        GroupName: { concat: [{get_input: env_name}, "-group"] }
+        Description: { concat: ["created by ", {get_input: env_name}] }
+        VpcId: { get_attribute: ["vpc", "aws_resource_id"] }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vpc
+
+  route_public_subnet_internet_gateway:
+    type: nativeedge.nodes.aws.ec2.Route
+    properties:
+      resource_config:
+        kwargs:
+          DestinationCidrBlock: 0.0.0.0/0
+      client_config:
+        aws_access_key_id: { get_secret: aws_access_key_id }
+        aws_secret_access_key: { get_secret: aws_secret_access_key }
+        aws_session_token: { get_secret: aws_session_token }
+        region_name: { get_input: aws_region_name }
+    relationships:
+      - type: nativeedge.relationships.contained_in
+        target: routetable
+      - type: nativeedge.relationships.connected_to
+        target: internet_gateway
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        stop: {}
+
+  routetable:
+    type: nativeedge.nodes.aws.ec2.RouteTable
+    properties:
+      client_config:
+        aws_access_key_id: { get_secret: aws_access_key_id }
+        aws_secret_access_key: { get_secret: aws_secret_access_key }
+        aws_session_token: { get_secret: aws_session_token }
+        region_name: { get_input: aws_region_name }
+    relationships:
+      - type: nativeedge.relationships.contained_in
+        target: vpc
+      - type: nativeedge.relationships.connected_to
+        target: subnet
+
+  subnet:
+    type: nativeedge.nodes.aws.ec2.Subnet
+    properties:
+      client_config:
+        aws_access_key_id: { get_secret: aws_access_key_id }
+        aws_secret_access_key: { get_secret: aws_secret_access_key }
+        aws_session_token: { get_secret: aws_session_token }
+        region_name: { get_input: aws_region_name }
+      resource_config:
+        CidrBlock: 10.10.4.0/24
+        AvailabilityZone: { get_input: availability_zone }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vpc
+
+  internet_gateway:
+    type: nativeedge.nodes.aws.ec2.InternetGateway
+    properties:
+      client_config:
+        aws_access_key_id: { get_secret: aws_access_key_id }
+        aws_secret_access_key: { get_secret: aws_secret_access_key }
+        aws_session_token: { get_secret: aws_session_token }
+        region_name: { get_input: aws_region_name }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vpc
+
+  vpc:
+    type: nativeedge.nodes.aws.ec2.Vpc
+    properties:
+      client_config:
+        aws_access_key_id: { get_secret: aws_access_key_id }
+        aws_secret_access_key: { get_secret: aws_secret_access_key }
+        aws_session_token: { get_secret: aws_session_token }
+        region_name: { get_input: aws_region_name }
+      resource_config:
+        CidrBlock: 10.10.0.0/16
+
+  cloud_init:
+    type: nativeedge.nodes.CloudInit.CloudConfig
+    properties:
+      resource_config:
+        users:
+          - name: { get_input: agent_user }
+            shell: /bin/bash
+            sudo:
+              - ALL=(ALL) NOPASSWD:ALL
+            ssh-authorized-keys:
+              - { get_attribute: ["agent_key", "public_key_export"] }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: agent_key
+
+  agent_key:
+    type: nativeedge.nodes.keys.RSAKey
+    properties:
+      resource_config:
+        key_name: { get_input: agent_key_name }
+        openssh_format: true
+      use_secret_store: true
+      use_secrets_if_exist: true
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: keys.ne_ssh_key.operations.create
+          inputs:
+            store_private_key_material: true
+outputs:
+
+  application_endpoint:
+    description: The external endpoint of the application.
+    value: { concat: ["http://", {get_attribute: [ip, aws_resource_id]}, ":80"] }
+groups:
+
+  scalable_compute:
+    members:
+      - vm
+      - nic
+      - hello-world
+policies:
+
+  scalable_compute_policy:
+    type: nativeedge.policies.scaling
+    properties:
+      default_instances: 1
+    targets:
+      - scalable_compute
+
