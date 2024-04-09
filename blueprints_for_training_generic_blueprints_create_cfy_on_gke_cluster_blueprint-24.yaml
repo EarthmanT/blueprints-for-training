@@ -1,0 +1,115 @@
+tosca_definitions_version: nativeedge_1_0
+
+imports:
+  - nativeedge/types/types.yaml
+  - plugin:nativeedge-helm-plugin
+  - plugin:nativeedge-kubernetes-plugin
+
+inputs:
+
+  repo_name:
+    description: >
+      Name of the repo to add.
+    type: string
+    default: cloudify-manager-aio
+
+  chart_name:
+    description: >
+      Chart package name to deploy from repo.
+    default: cloudify-manager-aio
+
+  helm_installation_source:
+    description: >
+      Helm download link.
+    type: string
+    default: https://get.helm.sh/helm-v3.10.0-linux-amd64.tar.gz
+
+  repo_url:
+    description: >
+      URL of the repo to add. For example: https://kubernetes-charts.storage.googleapis.com/
+    type: string
+    default: https://cloudify-cosmo.github.io/cloudify-helm
+
+  kubernetes_master_endpoint:
+    type: string
+    default: https://localhost
+
+  kubernetes_client_config:
+    default:
+      authentication:
+        gcp_service_account: { get_secret: gcp_credentials }
+      configuration:
+        api_options:
+          host: { get_input: kubernetes_master_endpoint }
+          api_key: { get_secret: kubernetes_token }
+          ssl_ca_cert: resources/gke-certificate.pem
+
+node_templates:
+
+  helm_install:
+    type: nativeedge.nodes.helm.Binary
+    properties:
+      use_existing_resource: false
+      installation_source: { get_input: helm_installation_source }
+
+  repo:
+    type: nativeedge.nodes.helm.Repo
+    properties:
+      resource_config:
+        name: { get_input: repo_name }
+        repo_url: { get_input: repo_url }
+    relationships:
+      - target: helm_install
+        type: nativeedge.relationships.helm.run_on_host
+
+  release:
+    type: nativeedge.nodes.helm.Release
+    properties:
+      client_config: { get_input: kubernetes_client_config }
+      resource_config:
+        name: cloudify-manager-aio
+        chart: { concat: [{get_input: repo_name}, "/", {get_input: chart_name}] }
+        set_values:
+          - name: image.repository
+            value: cloudifyplatform/premium-cloudify-manager-aio
+    relationships:
+      - target: helm_install
+        type: nativeedge.relationships.helm.run_on_host
+      - target: repo
+        type: nativeedge.relationships.depends_on
+
+  k8s_service:
+    type: nativeedge.nodes.kubernetes.resources.Service
+    properties:
+      use_external_resource: true
+      client_config: { get_input: kubernetes_client_config }
+      definition:
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: { get_input: chart_name }
+    relationships:
+      - target: release
+        type: nativeedge.relationships.depends_on
+
+  licence:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        configure:
+          implementation: scripts/licence.sh
+          inputs:
+            process:
+              env:
+                IP: { get_attribute: ["k8s_service", "kubernetes", "status", "load_balancer", "ingress", 0, "ip"] }
+                ADMIN_PASSWORD: { get_secret: nativeedge_admin_password }
+                LICENCE: { get_secret: nativeedge_licence_url }
+          executor: central_deployment_agent
+    relationships:
+      - target: k8s_service
+        type: nativeedge.relationships.depends_on
+capabilities:
+
+  nativeedge_manager_endpoint:
+    value: { concat: ["http://", {get_attribute: [k8s_service, kubernetes, status, load_balancer, ingress, 0, ip]}] }
+

@@ -1,0 +1,35 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  small test for agent sync
+
+imports:
+  - nativeedge/types/types.yaml
+
+inputs:
+
+  some_boolean:
+    type: boolean
+    default: true
+
+node_templates:
+
+  test_target:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: scripts/test_relations.py
+          executor: central_deployment_agent
+
+  test_source:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: scripts/test_relations.py
+          executor: central_deployment_agent
+    relationships:
+      - type: nativeedge.relationships.contained_in
+        target: test_target
+

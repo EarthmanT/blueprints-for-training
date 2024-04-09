@@ -1,0 +1,39 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  small test for agent sync
+
+imports:
+  - nativeedge/types/types.yaml
+
+inputs:
+
+  some_boolean:
+    type: boolean
+    default: true
+
+node_templates:
+
+  test_host:
+    type: nativeedge.nodes.Compute
+    properties:
+      agent_config:
+        install_method: remote
+        port: 22
+        user: centos
+        key: { get_secret: agent_key_private }
+      ip: 127.0.0.1
+
+  test_issue:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: scripts/test_input.sh
+          executor: central_deployment_agent
+          inputs:
+            BOOL_VAR: { get_input: some_boolean }
+    relationships:
+      - type: nativeedge.relationships.contained_in
+        target: test_host
+

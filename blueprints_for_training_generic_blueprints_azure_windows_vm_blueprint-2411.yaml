@@ -1,0 +1,278 @@
+tosca_definitions_version: nativeedge_1_0
+description: An example of deploying a Windows VM.
+
+imports:
+  - nativeedge/types/types.yaml
+  - plugin:nativeedge-azure-plugin?version= >=3.7.3
+  - plugin:nativeedge-utilities-plugin
+
+inputs:
+
+  resource_prefix:
+    type: string
+    display_label: Enter prefix to be applied to resource names
+    description: "Resource names created in Azure by the blueprint can be customized by supplying a prefix string (e.g. 'test_') \n"
+    default: cloudify
+
+  vm_size:
+    type: string
+    display_label: Enter location specific VM size
+    description: Location/region VM size name, e.g. 'Standard_M8ms'
+    default: Standard_D2as_v5
+
+  location:
+    type: string
+    display_label: Azure location
+    description: Select Azure location name
+    default: EastUS
+    constraints:
+      - valid_values:
+          - EastUS
+          - CentralUS
+          - WestUS
+          - WestEurope
+          - CanadaCentral
+
+  image_publisher:
+    type: string
+    display_label: Enter image publisher
+    description: Image publisher name, e.g. 'Canonical'
+    default: MicrosoftWindowsDesktop
+
+  image_offer:
+    type: string
+    display_label: Enter OS offer
+    description: Enter OS offer, e.g. 'UbuntuServer'
+    default: Windows-10
+
+  image_sku:
+    type: string
+    display_label: Enter image SKU
+    description: Enter image SKU, e.g. '18.04-LTS'
+    default: win10-21h2-pro
+
+  image_version:
+    type: string
+    display_label: Enter image version
+    description: Enter image version, e.g. 'latest'
+    default: latest
+
+  admin_username:
+    type: string
+    display_label: Enter desired admin username
+    description: Enter desired admin username
+    default: cloudify
+
+  admin_password:
+    type: string
+    display_label: Enter admin password
+    description: Enter the desired admin password
+    default: CloudifyAzure123!
+
+  additional_username:
+    type: string
+    display_label: Additional user
+    description: Additional user to create via Powershell script
+    default: jdoe
+
+  additional_user_password:
+    type: string
+    display_label: Password for the additional user
+    description: Password for the user created via Powershell script
+    default: password123
+
+dsl_definitions:
+
+  azure_credentials:
+    subscription_id: { get_secret: azure_subscription_id }
+    tenant_id: { get_secret: azure_tenant_id }
+    client_id: { get_secret: azure_client_id }
+    client_secret: { get_secret: azure_client_secret }
+
+node_templates:
+
+  resource_group:
+    type: nativeedge.nodes.azure.ResourceGroup
+    properties:
+      client_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      name: { concat: [{get_input: resource_prefix}, "group"] }
+      location: { get_input: location }
+
+  public_ip:
+    type: nativeedge.nodes.azurenetwork.PublicIPAddress
+    properties:
+      client_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      location: { get_input: location }
+      resource_config:
+        publicIPAllocationMethod: dynamic
+    relationships:
+      - type: nativeedge.relationships.azure.contained_in_resource_group
+        target: resource_group
+
+  network:
+    type: nativeedge.nodes.azurenetwork.VirtualNetwork
+    properties:
+      client_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      name: { concat: [{get_input: resource_prefix}, "network"] }
+      location: { get_input: location }
+    relationships:
+      - type: nativeedge.relationships.azure.contained_in_resource_group
+        target: resource_group
+
+  subnet:
+    type: nativeedge.nodes.azurenetwork.Subnet
+    properties:
+      client_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      name: { concat: [{get_input: resource_prefix}, "subnet"] }
+      location: { get_input: location }
+      resource_config:
+        addressPrefix: 10.10.10.0/24
+    relationships:
+      - type: nativeedge.relationships.azure.contained_in_virtual_network
+        target: network
+
+  ip_config:
+    type: nativeedge.nodes.azurenetwork.IPConfiguration
+    properties:
+      client_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      location: { get_input: location }
+      resource_config:
+        privateIPAllocationMethod: Dynamic
+    relationships:
+      - type: nativeedge.relationships.azure.ip_configuration_connected_to_subnet
+        target: subnet
+      - type: nativeedge.relationships.azure.ip_configuration_connected_to_public_ip
+        target: public_ip
+
+  security_group:
+    type: nativeedge.nodes.azurenetwork.NetworkSecurityGroup
+    properties:
+      client_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      name: { concat: [{get_input: resource_prefix}, "sg"] }
+      location: { get_input: location }
+      resource_config:
+        securityRules:
+          - name: rdp
+            properties:
+              description: RDP access
+              protocol: Tcp
+              sourcePortRange: '*'
+              destinationPortRange: 3389
+              sourceAddressPrefix: '*'
+              destinationAddressPrefix: '*'
+              priority: 100
+              access: Allow
+              direction: Inbound
+          - name: winrm
+            properties:
+              description: Winrm access
+              protocol: Tcp
+              sourcePortRange: '*'
+              destinationPortRange: 5985
+              sourceAddressPrefix: '*'
+              destinationAddressPrefix: '*'
+              priority: 110
+              access: Allow
+              direction: Inbound
+    relationships:
+      - type: nativeedge.relationships.azure.contained_in_resource_group
+        target: resource_group
+
+  nic:
+    type: nativeedge.nodes.azurenetwork.NetworkInterfaceCard
+    properties:
+      client_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      location: { get_input: location }
+    relationships:
+      - type: nativeedge.relationships.azure.contained_in_resource_group
+        target: resource_group
+      - type: nativeedge.relationships.azure.nic_connected_to_network_security_group
+        target: security_group
+      - type: nativeedge.relationships.azure.nic_connected_to_ip_configuration
+        target: ip_config
+
+  storage_account:
+    type: nativeedge.nodes.azurestorage.StorageAccount
+    properties:
+      client_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      location: { get_input: location }
+      resource_config:
+        accountType: Standard_LRS
+    relationships:
+      - type: nativeedge.relationships.azure.contained_in_resource_group
+        target: resource_group
+
+  vm:
+    type: nativeedge.nodes.azurecompute.WindowsVirtualMachine
+    properties:
+      client_config:
+        subscription_id: { get_secret: azure_subscription_id }
+        tenant_id: { get_secret: azure_tenant_id }
+        client_id: { get_secret: azure_client_id }
+        client_secret: { get_secret: azure_client_secret }
+      agent_config:
+        install_method: none
+        user: { get_input: admin_username }
+        password: { get_input: admin_password }
+      name: { concat: [{get_input: resource_prefix}, "host"] }
+      location: { get_input: location }
+      os_family: windows
+      use_public_ip: true
+      resource_config:
+        hardwareProfile:
+          vmSize: { get_input: vm_size }
+        storageProfile:
+          imageReference:
+            publisher: { get_input: image_publisher }
+            offer: { get_input: image_offer }
+            sku: { get_input: image_sku }
+            version: { get_input: image_version }
+        osProfile:
+          computerName: { get_property: ["SELF", "name"] }
+          adminUsername: { get_input: admin_username }
+          adminPassword: { get_input: admin_password }
+    relationships:
+      - type: nativeedge.relationships.azure.contained_in_resource_group
+        target: resource_group
+      - type: nativeedge.relationships.azure.connected_to_nic
+        target: nic
+      - type: nativeedge.relationships.azure.connected_to_storage_account
+        target: storage_account
+capabilities:
+
+  public_ip:
+    description: The public ip of the instance
+    value: { get_attribute: ["vm", "public_ip"] }
+
