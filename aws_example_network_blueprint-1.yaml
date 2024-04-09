@@ -1,10 +1,12 @@
-tosca_definitions_version: cloudify_dsl_1_5
-description: AWS VPC Scenario 2 Example Blueprint.
+tosca_definitions_version: nativeedge_1_0
+description: >
+
+  This blueprint creates an AWS network, including vpc, subnet, and required components to route internet access.
 
 imports:
 
-  - cloudify/types/types.yaml
-  - plugin:cloudify-aws-plugin
+  - nativeedge/types/types.yaml
+  - plugin:nativeedge-aws-plugin
 labels:
 
   csys-obj-type:
@@ -68,7 +70,7 @@ node_templates:
 
 
   vpc:
-    type: cloudify.nodes.aws.ec2.Vpc
+    type: nativeedge.nodes.aws.ec2.Vpc
     properties:
       resource_config:
         CidrBlock: { get_input: vpc_cidr }
@@ -79,7 +81,7 @@ node_templates:
         region_name: { get_input: region_name }
 
   internet_gateway:
-    type: cloudify.nodes.aws.ec2.InternetGateway
+    type: nativeedge.nodes.aws.ec2.InternetGateway
     properties:
       client_config:
         aws_access_key_id: { get_input: aws_access_key_id }
@@ -87,11 +89,11 @@ node_templates:
         aws_session_token: { get_secret: aws_session_token }
         region_name: { get_input: region_name }
     relationships:
-      - type: cloudify.relationships.connected_to
+      - type: nativeedge.relationships.connected_to
         target: vpc
 
   public_subnet:
-    type: cloudify.nodes.aws.ec2.Subnet
+    type: nativeedge.nodes.aws.ec2.Subnet
     properties:
       resource_config:
         CidrBlock: { get_input: public_subnet_cidr }
@@ -102,13 +104,13 @@ node_templates:
         aws_session_token: { get_secret: aws_session_token }
         region_name: { get_input: region_name }
     relationships:
-      - type: cloudify.relationships.depends_on
+      - type: nativeedge.relationships.depends_on
         target: vpc
-      - type: cloudify.relationships.depends_on
+      - type: nativeedge.relationships.depends_on
         target: internet_gateway
 
   private_subnet:
-    type: cloudify.nodes.aws.ec2.Subnet
+    type: nativeedge.nodes.aws.ec2.Subnet
     properties:
       resource_config:
         CidrBlock: { get_input: private_subnet_cidr }
@@ -119,13 +121,13 @@ node_templates:
         aws_session_token: { get_secret: aws_session_token }
         region_name: { get_input: region_name }
     relationships:
-      - type: cloudify.relationships.depends_on
+      - type: nativeedge.relationships.depends_on
         target: vpc
-      - type: cloudify.relationships.depends_on
+      - type: nativeedge.relationships.depends_on
         target: internet_gateway
 
   public_subnet_routetable:
-    type: cloudify.nodes.aws.ec2.RouteTable
+    type: nativeedge.nodes.aws.ec2.RouteTable
     properties:
       client_config:
         aws_access_key_id: { get_input: aws_access_key_id }
@@ -133,13 +135,13 @@ node_templates:
         aws_session_token: { get_secret: aws_session_token }
         region_name: { get_input: region_name }
     relationships:
-      - type: cloudify.relationships.contained_in
+      - type: nativeedge.relationships.contained_in
         target: vpc
-      - type: cloudify.relationships.connected_to
+      - type: nativeedge.relationships.connected_to
         target: public_subnet
 
   private_subnet_routetable:
-    type: cloudify.nodes.aws.ec2.RouteTable
+    type: nativeedge.nodes.aws.ec2.RouteTable
     properties:
       client_config:
         aws_access_key_id: { get_input: aws_access_key_id }
@@ -147,13 +149,13 @@ node_templates:
         aws_session_token: { get_secret: aws_session_token }
         region_name: { get_input: region_name }
     relationships:
-      - type: cloudify.relationships.contained_in
+      - type: nativeedge.relationships.contained_in
         target: vpc
-      - type: cloudify.relationships.connected_to
+      - type: nativeedge.relationships.connected_to
         target: private_subnet
 
   route_public_subnet_internet_gateway:
-    type: cloudify.nodes.aws.ec2.Route
+    type: nativeedge.nodes.aws.ec2.Route
     properties:
       resource_config:
         kwargs:
@@ -164,16 +166,16 @@ node_templates:
         aws_session_token: { get_secret: aws_session_token }
         region_name: { get_input: region_name }
     relationships:
-      - type: cloudify.relationships.contained_in
+      - type: nativeedge.relationships.contained_in
         target: public_subnet_routetable
-      - type: cloudify.relationships.connected_to
+      - type: nativeedge.relationships.connected_to
         target: internet_gateway
     interfaces:
-      cloudify.interfaces.lifecycle:
+      nativeedge.interfaces.lifecycle:
         stop: {}
 
   nat_gateway_ip:
-    type: cloudify.nodes.aws.ec2.ElasticIP
+    type: nativeedge.nodes.aws.ec2.ElasticIP
     properties:
       resource_config:
         Domain: vpc
@@ -183,11 +185,11 @@ node_templates:
         aws_session_token: { get_secret: aws_session_token }
         region_name: { get_input: region_name }
     interfaces:
-      cloudify.interfaces.lifecycle:
+      nativeedge.interfaces.lifecycle:
         stop: {}
 
   nat_gateway:
-    type: cloudify.nodes.aws.ec2.NATGateway
+    type: nativeedge.nodes.aws.ec2.NATGateway
     properties:
       client_config:
         aws_access_key_id: { get_input: aws_access_key_id }
@@ -198,13 +200,13 @@ node_templates:
         kwargs:
           ConnectivityType: public
     relationships:
-      - type: cloudify.relationships.depends_on
+      - type: nativeedge.relationships.depends_on
         target: public_subnet
-      - type: cloudify.relationships.depends_on
+      - type: nativeedge.relationships.depends_on
         target: nat_gateway_ip
 
   route_private_subnet_nat_gateway:
-    type: cloudify.nodes.aws.ec2.Route
+    type: nativeedge.nodes.aws.ec2.Route
     properties:
       resource_config:
         kwargs:
@@ -215,12 +217,12 @@ node_templates:
         aws_session_token: { get_secret: aws_session_token }
         region_name: { get_input: region_name }
     relationships:
-      - type: cloudify.relationships.contained_in
+      - type: nativeedge.relationships.contained_in
         target: private_subnet_routetable
-      - type: cloudify.relationships.connected_to
+      - type: nativeedge.relationships.connected_to
         target: nat_gateway
     interfaces:
-      cloudify.interfaces.lifecycle:
+      nativeedge.interfaces.lifecycle:
         stop: {}
 capabilities:
 

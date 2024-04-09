@@ -1,30 +1,12 @@
-tosca_definitions_version: cloudify_dsl_1_5
+tosca_definitions_version: nativeedge_1_0
 description: >
 
-  This blueprint creates a virtual network in Azure.
-
-
-  Azure Virtual Machines with public endpoints
-
-
-  can be installed on this virtual network
-
-
-  using the Cloudify "Deploy On" feature.
-
-
-  This is because of the label "csys-obj-type" value "environment".
-
-
-  Due to this label, Cloudify will know that the capabilities
-
-
-  can be used in conjunction with "deploy on".
+  This blueprint creates a virtual network in Azure. Azure Virtual Machines with public endpoints can be installed on this virtual network using the Cloudify "Deploy On" feature. This is because of the label "csys-obj-type" value "environment". Due to this label, Cloudify will know that the capabilities can be used in conjunction with "deploy on".
 
 imports:
 
-  - cloudify/types/types.yaml
-  - plugin:cloudify-azure-plugin
+  - nativeedge/types/types.yaml
+  - plugin:nativeedge-azure-plugin
 labels:
 
   csys-obj-type:
@@ -127,7 +109,7 @@ node_templates:
 
 
   resource_group:
-    type: cloudify.nodes.azure.ResourceGroup
+    type: nativeedge.nodes.azure.ResourceGroup
     properties:
       client_config:
         subscription_id: { get_secret: {get_input: subscription_id_name} }
@@ -142,7 +124,7 @@ node_templates:
       location: { get_input: location }
 
   network:
-    type: cloudify.nodes.azure.network.VirtualNetwork
+    type: nativeedge.nodes.azure.network.VirtualNetwork
     properties:
       client_config:
         subscription_id: { get_secret: {get_input: subscription_id_name} }
@@ -158,11 +140,11 @@ node_templates:
       location: { get_input: location }
       retry_after: { get_input: retry_after }
     relationships:
-      - type: cloudify.relationships.azure.contained_in_resource_group
+      - type: nativeedge.relationships.azure.contained_in_resource_group
         target: resource_group
 
   subnet:
-    type: cloudify.nodes.azure.network.Subnet
+    type: nativeedge.nodes.azure.network.Subnet
     properties:
       client_config:
         subscription_id: { get_secret: {get_input: subscription_id_name} }
@@ -180,7 +162,7 @@ node_templates:
       resource_config:
         addressPrefix: { get_input: public_subnet_cidr }
     relationships:
-      - type: cloudify.relationships.azure.contained_in_virtual_network
+      - type: nativeedge.relationships.azure.contained_in_virtual_network
         target: network
 capabilities:
 

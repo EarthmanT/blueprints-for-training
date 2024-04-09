@@ -1,14 +1,14 @@
-tosca_definitions_version: cloudify_dsl_1_5
+tosca_definitions_version: nativeedge_1_0
 description: >
 
-  This blueprint create a managed cluster.
+  This blueprint create a managed Azure Kubernetes AKS cluster.
 
 imports:
 
-  - cloudify/types/types.yaml
-  - plugin:cloudify-azure-plugin?version= >=3.3.0
-  - plugin:cloudify-kubernetes-plugin?version= >=2.7.0
-  - plugin:cloudify-utilities-plugin?version= >=1.22.1
+  - nativeedge/types/types.yaml
+  - plugin:nativeedge-azure-plugin?version= >=3.3.0
+  - plugin:nativeedge-kubernetes-plugin?version= >=2.7.0
+  - plugin:nativeedge-utilities-plugin?version= >=1.22.1
 
 inputs:
 
@@ -122,7 +122,7 @@ node_templates:
 
 
   resource_group:
-    type: cloudify.nodes.azure.ResourceGroup
+    type: nativeedge.nodes.azure.ResourceGroup
     properties:
       name: { get_input: resource_group_name }
       location: { get_input: location }
@@ -133,7 +133,7 @@ node_templates:
         client_secret: { get_input: client_secret }
 
   managed_cluster:
-    type: cloudify.nodes.azure.compute.ManagedCluster
+    type: nativeedge.nodes.azure.compute.ManagedCluster
     properties:
       resource_group: { get_input: resource_group_name }
       name: { get_input: managed_cluster_name }
@@ -178,13 +178,13 @@ node_templates:
         client_secret: { get_input: client_secret }
       store_kube_config_in_runtime: true
     relationships:
-      - type: cloudify.relationships.azure.contained_in_resource_group
+      - type: nativeedge.relationships.azure.contained_in_resource_group
         target: resource_group
-      - type: cloudify.relationships.depends_on
+      - type: nativeedge.relationships.depends_on
         target: agent_key
 
   new_service_account:
-    type: cloudify.nodes.kubernetes.resources.ServiceAccount
+    type: nativeedge.nodes.kubernetes.resources.ServiceAccount
     properties:
       client_config:
         configuration:
@@ -198,11 +198,11 @@ node_templates:
       options:
         namespace: { get_input: service_account_namespace }
     relationships:
-      - type: cloudify.relationships.depends_on
+      - type: nativeedge.relationships.depends_on
         target: managed_cluster
 
   new_role_binding:
-    type: cloudify.nodes.kubernetes.resources.RoleBinding
+    type: nativeedge.nodes.kubernetes.resources.RoleBinding
     properties:
       client_config:
         configuration:
@@ -223,11 +223,11 @@ node_templates:
       options:
         namespace: { get_input: service_account_namespace }
     relationships:
-      - type: cloudify.relationships.depends_on
+      - type: nativeedge.relationships.depends_on
         target: managed_cluster
 
   secret:
-    type: cloudify.nodes.kubernetes.resources.Secret
+    type: nativeedge.nodes.kubernetes.resources.Secret
     properties:
       client_config:
         configuration:
@@ -241,26 +241,26 @@ node_templates:
             kubernetes.io/service-account.name: { get_input: service_account_name }
         type: kubernetes.io/service-account-token
     relationships:
-      - type: cloudify.relationships.depends_on
+      - type: nativeedge.relationships.depends_on
         target: new_role_binding
-      - type: cloudify.relationships.depends_on
+      - type: nativeedge.relationships.depends_on
         target: new_service_account
 
   store_token:
-    type: cloudify.nodes.Root
+    type: nativeedge.nodes.Root
     interfaces:
-      cloudify.interfaces.lifecycle:
+      nativeedge.interfaces.lifecycle:
         create:
           implementation: scripts/store_kube_token.py
           executor: central_deployment_agent
           inputs:
             kube_token: { get_attribute: ["secret", "kubernetes", "data", "token"] }
     relationships:
-      - type: cloudify.relationships.depends_on
+      - type: nativeedge.relationships.depends_on
         target: secret
 
   sanity_pod:
-    type: cloudify.nodes.kubernetes.resources.FileDefinedResource
+    type: nativeedge.nodes.kubernetes.resources.FileDefinedResource
     properties:
       client_config:
         configuration:
@@ -273,16 +273,16 @@ node_templates:
       file:
         resource_path: resources/template.yaml
     relationships:
-      - type: cloudify.relationships.depends_on
+      - type: nativeedge.relationships.depends_on
         target: store_token
     interfaces:
-      cloudify.interfaces.lifecycle:
+      nativeedge.interfaces.lifecycle:
         precreate: {}
         create:
-          implementation: kubernetes.cloudify_kubernetes.tasks.file_resource_create
+          implementation: kubernetes.ne_kubernetes.tasks.file_resource_create
         configure: {}
         start:
-          implementation: kubernetes.cloudify_kubernetes.tasks.file_resource_delete
+          implementation: kubernetes.ne_kubernetes.tasks.file_resource_delete
         poststart: {}
         prestop: {}
         stop: {}
@@ -290,7 +290,7 @@ node_templates:
         postdelete: {}
 
   agent_key:
-    type: cloudify.nodes.keys.RSAKey
+    type: nativeedge.nodes.keys.RSAKey
     properties:
       resource_config:
         key_name: { get_input: agent_key_name }
@@ -298,9 +298,9 @@ node_templates:
       use_secret_store: true
       use_secrets_if_exist: true
     interfaces:
-      cloudify.interfaces.lifecycle:
+      nativeedge.interfaces.lifecycle:
         create:
-          implementation: keys.cloudify_ssh_key.operations.create
+          implementation: keys.ne_ssh_key.operations.create
           inputs:
             store_private_key_material: true
 capabilities:
