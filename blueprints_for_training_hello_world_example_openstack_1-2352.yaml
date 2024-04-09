@@ -1,0 +1,284 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  This blueprint installs an application using Cloudify on Openstack.
+
+imports:
+  - nativeedge/types/types.yaml
+  - plugin:nativeedge-openstack-plugin?version= >=3.2.2
+  - plugin:nativeedge-ansible-plugin
+  - plugin:nativeedge-utilities-plugin?version= >=1.22.1
+  - includes/hello-world-ansible.yaml
+
+inputs:
+
+  env_name:
+    display_label: Env Name
+    type: string
+    default: cfyhwos
+
+  region:
+    display_label: Region
+    type: string
+    description: The Openstack region.
+
+  external_network_id:
+    display_label: External Network Id
+    type: string
+    description: A network that provisions floating IPs.
+
+  image:
+    display_label: Image
+    type: string
+    description: The UUID of an Ubuntu Trusty 14.04 image in your Openstack account.
+
+  flavor:
+    display_label: Flavor
+    type: string
+    description: The UUID of small flavor in your Openstack account.
+
+  network_id:
+    display_label: Network Id
+    type: string
+    description: A name for your new Openstack Network.
+    default: nativeedge-hello-world-network
+
+  subnet_id:
+    display_label: Subnet Id
+    type: string
+    description: A name for your new Openstack Subnet.
+    default: nativeedge-hello-world-subnet
+
+  agent_user:
+    display_label: Agent User
+    type: string
+    description: >
+      The username of the agent running on the instance created from the image.
+    default: ubuntu
+
+  user_domain_name:
+    display_label: User Domain Name
+    description: Openstack user domain name.
+    type: string
+    default: default
+
+  project_domain_name:
+    display_label: Project Domain Name
+    description: The name of your OpenStack project.
+    type: string
+    default: default
+
+  agent_key_name:
+    display_label: Agent Key Name
+    type: string
+    default: agent_key
+
+dsl_definitions:
+
+  openstack_config:
+    auth_url: { get_secret: openstack_auth_url }
+    region_name: { get_input: region }
+    project_name: { get_secret: openstack_tenant_name }
+    username: { get_secret: openstack_username }
+    password: { get_secret: openstack_password }
+    user_domain_name: { get_input: user_domain_name }
+    project_domain_name: { get_input: project_domain_name }
+
+node_templates:
+
+  vm:
+    type: nativeedge.nodes.openstack.Server
+    properties:
+      client_config:
+        auth_url: { get_secret: openstack_auth_url }
+        region_name: { get_input: region }
+        project_name: { get_secret: openstack_tenant_name }
+        username: { get_secret: openstack_username }
+        password: { get_secret: openstack_password }
+        user_domain_name: { get_input: user_domain_name }
+        project_domain_name: { get_input: project_domain_name }
+      agent_config:
+        install_method: none
+        key: { get_attribute: ["agent_key", "private_key_export"] }
+        user: { get_input: agent_user }
+      resource_config:
+        name: vm
+        image_id: { get_input: image }
+        flavor_id: { get_input: flavor }
+        user_data: { get_attribute: ["cloud_init", "cloud_config"] }
+      use_public_ip: true
+    relationships:
+      - type: nativeedge.relationships.openstack.server_connected_to_port
+        target: port
+      - type: nativeedge.relationships.depends_on
+        target: cloud_init
+
+  port:
+    type: nativeedge.nodes.openstack.Port
+    properties:
+      client_config:
+        auth_url: { get_secret: openstack_auth_url }
+        region_name: { get_input: region }
+        project_name: { get_secret: openstack_tenant_name }
+        username: { get_secret: openstack_username }
+        password: { get_secret: openstack_password }
+        user_domain_name: { get_input: user_domain_name }
+        project_domain_name: { get_input: project_domain_name }
+      resource_config:
+        network_id: { get_attribute: ["network", "id"] }
+    relationships:
+      - type: nativeedge.relationships.openstack.port_connected_to_subnet
+        target: subnet
+      - type: nativeedge.relationships.openstack.port_connected_to_security_group
+        target: security-group
+      - type: nativeedge.relationships.openstack.port_connected_to_floating_ip
+        target: ip
+
+  subnet:
+    type: nativeedge.nodes.openstack.Subnet
+    properties:
+      client_config:
+        auth_url: { get_secret: openstack_auth_url }
+        region_name: { get_input: region }
+        project_name: { get_secret: openstack_tenant_name }
+        username: { get_secret: openstack_username }
+        password: { get_secret: openstack_password }
+        user_domain_name: { get_input: user_domain_name }
+        project_domain_name: { get_input: project_domain_name }
+      resource_config:
+        name: { get_input: subnet_id }
+        ip_version: 4
+        cidr: 10.10.4.0/24
+        dns_nameservers:
+          - 8.8.4.4
+          - 8.8.8.8
+        allocation_pools:
+          - start: 10.10.4.2
+            end: 10.10.4.254
+    relationships:
+      - type: nativeedge.relationships.contained_in
+        target: network
+      - type: nativeedge.relationships.openstack.subnet_connected_to_router
+        target: router
+
+  network:
+    type: nativeedge.nodes.openstack.Network
+    properties:
+      client_config:
+        auth_url: { get_secret: openstack_auth_url }
+        region_name: { get_input: region }
+        project_name: { get_secret: openstack_tenant_name }
+        username: { get_secret: openstack_username }
+        password: { get_secret: openstack_password }
+        user_domain_name: { get_input: user_domain_name }
+        project_domain_name: { get_input: project_domain_name }
+      resource_config:
+        name: { get_input: network_id }
+
+  router:
+    type: nativeedge.nodes.openstack.Router
+    properties:
+      client_config:
+        auth_url: { get_secret: openstack_auth_url }
+        region_name: { get_input: region }
+        project_name: { get_secret: openstack_tenant_name }
+        username: { get_secret: openstack_username }
+        password: { get_secret: openstack_password }
+        user_domain_name: { get_input: user_domain_name }
+        project_domain_name: { get_input: project_domain_name }
+    relationships:
+      - type: nativeedge.relationships.connected_to
+        target: external-network
+
+  security-group:
+    type: nativeedge.nodes.openstack.SecurityGroup
+    properties:
+      client_config:
+        auth_url: { get_secret: openstack_auth_url }
+        region_name: { get_input: region }
+        project_name: { get_secret: openstack_tenant_name }
+        username: { get_secret: openstack_username }
+        password: { get_secret: openstack_password }
+        user_domain_name: { get_input: user_domain_name }
+        project_domain_name: { get_input: project_domain_name }
+      resource_config:
+        name: { concat: [{get_input: env_name}, "-sg"] }
+        description: { concat: [{get_input: env_name}, " sg"] }
+      security_group_rules:
+        - direction: ingress
+          protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+        - direction: ingress
+          protocol: tcp
+          port_range_min: 80
+          port_range_max: 80
+
+  ip:
+    type: nativeedge.nodes.openstack.FloatingIP
+    properties:
+      client_config:
+        auth_url: { get_secret: openstack_auth_url }
+        region_name: { get_input: region }
+        project_name: { get_secret: openstack_tenant_name }
+        username: { get_secret: openstack_username }
+        password: { get_secret: openstack_password }
+        user_domain_name: { get_input: user_domain_name }
+        project_domain_name: { get_input: project_domain_name }
+    relationships:
+      - type: nativeedge.relationships.connected_to
+        target: external-network
+
+  external-network:
+    type: nativeedge.nodes.openstack.Network
+    properties:
+      client_config:
+        auth_url: { get_secret: openstack_auth_url }
+        region_name: { get_input: region }
+        project_name: { get_secret: openstack_tenant_name }
+        username: { get_secret: openstack_username }
+        password: { get_secret: openstack_password }
+        user_domain_name: { get_input: user_domain_name }
+        project_domain_name: { get_input: project_domain_name }
+      use_external_resource: true
+      resource_config:
+        name: { get_input: external_network_id }
+        kwargs:
+          routing:
+            external: true
+
+  cloud_init:
+    type: nativeedge.nodes.CloudInit.CloudConfig
+    properties:
+      resource_config:
+        users:
+          - name: { get_input: agent_user }
+            shell: /bin/bash
+            sudo:
+              - ALL=(ALL) NOPASSWD:ALL
+            ssh-authorized-keys:
+              - { get_attribute: ["agent_key", "public_key_export"] }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: agent_key
+
+  agent_key:
+    type: nativeedge.nodes.keys.RSAKey
+    properties:
+      resource_config:
+        key_name: { get_input: agent_key_name }
+        openssh_format: true
+      use_secret_store: true
+      use_secrets_if_exist: true
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: keys.ne_ssh_key.operations.create
+          inputs:
+            store_private_key_material: true
+outputs:
+
+  application_endpoint:
+    description: The external endpoint of the application.
+    value: { concat: ["http://", {get_attribute: [ip, floating_ip_address]}, ":80"] }
+
