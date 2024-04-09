@@ -1,0 +1,167 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  This blueprint creates infrastructure on AWS using Terraform.
+
+imports:
+  - nativeedge/types/types.yaml
+  - plugin:nativeedge-terraform-plugin
+  - plugin:nativeedge-ansible-plugin
+  - plugin:nativeedge-utilities-plugin?version= >=1.22.1
+
+inputs:
+
+  aws_region_name:
+    type: string
+    constraints:
+      - valid_values:
+          - us-east-1
+          - us-west-1
+          - ca-central-1
+          - eu-west-1
+
+  aws_zone_name:
+    type: string
+    default: { concat: [{get_input: aws_region_name}, "a"] }
+
+  env_type:
+    description: >
+      The environment's type to create
+    type: string
+    constraints:
+      - valid_values:
+          - DEV
+          - QA
+          - PRODUCTION
+
+  nginx_port:
+    description: >
+      The port that NGINX will run on
+    type: integer
+    default: 80
+    constraints:
+      - valid_values:
+          - 80
+          - 8080
+
+  vm_count:
+    description: Number of VMs
+    type: integer
+    constraints:
+      - valid_values:
+          - 1
+          - 2
+          - 3
+
+node_templates:
+
+  terraform:
+    type: nativeedge.nodes.terraform
+
+  cloud_resources:
+    type: nativeedge.nodes.terraform.Module
+    properties:
+      resource_config:
+        source:
+          location: https://github.com/ahmadiesa-abu/tf-source/archive/refs/heads/master.zip
+        source_path: template/modules/public_vm
+        variables:
+          env_name: ahmad
+          access_key: { get_secret: aws_access_key_id }
+          secret_key: { get_secret: aws_secret_access_key }
+          aws_region: { get_input: aws_region_name }
+          aws_zone: { get_input: aws_zone_name }
+          admin_user: centos
+          aws_instance_type: t2.micro
+          deployment_id: { get_sys: ["deployment", "id"] }
+          admin_key_public: { get_secret: agent_key_public }
+      infracost_config:
+        installation_source: https://github.com/infracost/infracost/releases/download/v0.10.30/infracost-linux-amd64.tar.gz
+        enable: true
+        api_key: { get_secret: infracost_api_key }
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        configure:
+          implementation: tf.nativeedge_tf.tasks.infracost
+          inputs:
+            infracost_config: { get_property: ["SELF", "infracost_config"] }
+        start: {}
+        poststart: {}
+    relationships:
+      - target: terraform
+        type: nativeedge.relationships.terraform.run_on_host
+      - target: agent_key
+        type: nativeedge.relationships.depends_on
+
+  agent_key:
+    type: nativeedge.nodes.keys.RSAKey
+    properties:
+      resource_config:
+        key_name: agent_key
+        openssh_format: true
+      use_secret_store: true
+      use_secrets_if_exist: true
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: keys.ne_ssh_key.operations.create
+          inputs:
+            store_private_key_material: true
+capabilities:
+
+  plan:
+    value:
+      get_attributes_list:
+        - cloud_resources
+        - plain_text_plan
+
+  cost:
+    value:
+      get_attributes_list:
+        - cloud_resources
+        - plain_text_infracost
+
+  name:
+    value:
+      get_attributes_list:
+        - cloud_resources
+        - resources
+        - example_vm
+        - instances
+        - 0
+        - attributes
+        - tags
+        - Name
+
+  endpoint:
+    description: The external endpoint of the application.
+    value:
+      get_attributes_list:
+        - cloud_resources
+        - outputs
+        - ip
+        - value
+
+  user:
+    description: user ID.
+    value: centos
+
+  key_content:
+    description: Private agent key
+    value: { get_attribute: ["agent_key", "private_key_export"] }
+groups:
+
+  server_and_app:
+    members:
+      - cloud_resources
+policies:
+
+  scale_policy:
+    type: nativeedge.policies.scaling
+    properties:
+      default_instances: { get_input: vm_count }
+      min_instances: 1
+      max_instances: 3
+    targets:
+      - server_and_app
+

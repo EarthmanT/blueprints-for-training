@@ -1,0 +1,54 @@
+tosca_definitions_version: nativeedge_1_0
+description: blueprints_test_terraform_local Description
+
+imports:
+  - nativeedge/types/types.yaml
+  - plugin:nativeedge-terraform-plugin
+
+inputs:
+
+  file_name:
+    type: string
+    default: cfy-test
+
+  file_path:
+    type: string
+    default: { concat: ["/nexus-data/blobs/", {get_input: file_name}] }
+
+  repository_name:
+    type: string
+    default: cfy-repo-test
+
+node_templates:
+
+  terraform:
+    type: nativeedge.nodes.terraform
+    properties:
+      resource_config:
+        installation_source: https://releases.hashicorp.com/terraform/0.14.11/terraform_0.14.11_linux_amd64.zip
+        plugins:
+          nexus: https://github.com/datadrivers/terraform-provider-nexus/releases/download/v1.21.0/terraform-provider-nexus_1.21.0_linux_amd64.zip
+
+  cloud_resources:
+    type: nativeedge.nodes.terraform.Module
+    properties:
+      resource_config:
+        source:
+          location: tf_module/nexus.zip
+        source_path: nexus
+        variables:
+          nexus_server: { get_secret: nexus_server }
+          nexus_username: { get_secret: nexus_username }
+          nexus_password: { get_secret: nexus_password }
+          file_name: { get_input: file_name }
+          file_path: { get_input: file_path }
+          repository_name: { get_input: repository_name }
+    relationships:
+      - target: terraform
+        type: nativeedge.relationships.terraform.run_on_host
+outputs:
+
+  repo_url:
+    description: Repo http url to clone from
+    value: { concat: [{get_secret: nexus_server}, "/#browse/upload:", {get_input: repository_name}] }
+

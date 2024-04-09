@@ -1,0 +1,251 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  This blueprint creates infrastructure on AWS using Terraform.
+
+imports:
+  - nativeedge/types/types.yaml
+  - plugin:nativeedge-terraform-plugin
+  - plugin:nativeedge-ansible-plugin
+  - plugin:nativeedge-utilities-plugin?version= >=1.22.1
+
+inputs:
+
+  azure_location_name:
+    type: string
+    constraints:
+      - valid_values:
+          - westus
+          - westus2
+          - eastus
+          - centralus
+          - centraluseuap
+          - southcentralus
+          - northcentralus
+          - westcentralus
+          - eastus2
+          - eastus2euap
+          - brazilsouth
+          - brazilus
+          - northeurope
+          - westeurope
+          - eastasia
+          - southeastasia
+          - japanwest
+          - japaneast
+          - koreacentral
+          - koreasouth
+          - southindia
+          - westindia
+          - centralindia
+          - australiaeast
+          - australiasoutheast
+          - canadacentral
+          - canadaeast
+          - uksouth
+          - ukwest
+          - francecentral
+          - francesouth
+          - australiacentral
+          - australiacentral2
+          - uaecentral
+          - uaenorth
+          - southafricanorth
+          - southafricawest
+          - switzerlandnorth
+          - switzerlandwest
+          - germanynorth
+          - germanywestcentral
+          - norwayeast
+          - norwaywest
+          - brazilsoutheast
+          - westus3
+          - swedencentral
+          - swedensouth
+
+  env_type:
+    description: >
+      The environment's type to create
+    type: string
+    constraints:
+      - valid_values:
+          - DEV
+          - QA
+          - PRODUCTION
+
+  nginx_port:
+    description: >
+      The port that NGINX will run on
+    type: integer
+    default: 80
+    constraints:
+      - valid_values:
+          - 80
+          - 8080
+
+  vm_count:
+    description: Number of VMs
+    type: integer
+    constraints:
+      - valid_values:
+          - 1
+          - 2
+          - 3
+
+node_templates:
+
+  terraform:
+    type: nativeedge.nodes.terraform
+
+  cloud_resources:
+    type: nativeedge.nodes.terraform.Module
+    properties:
+      resource_config:
+        source:
+          location: https://github.com/ahmadiesa-abu/tf-source/archive/refs/heads/master.zip
+        source_path: template/modules/azure/public_vm
+        variables:
+          subscription_id: { get_secret: azure_subscription_id }
+          tenant_id: { get_secret: azure_tenant_id }
+          client_id: { get_secret: azure_client_id }
+          client_secret: { get_secret: azure_client_secret }
+          region: { get_input: azure_location_name }
+          admin_user: azureuser
+          admin_key_public: { get_attribute: ["agent_key", "public_key_export"] }
+          prefix: ahmad
+          deployment_id: { get_sys: ["deployment", "id"] }
+          vm_size: Standard_B4ms
+      infracost_config:
+        enable: true
+        api_key: { get_secret: infracost_api_key }
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        configure:
+          implementation: tf.nativeedge_tf.tasks.infracost
+          inputs:
+            infracost_config: { get_property: ["SELF", "infracost_config"] }
+        start:
+          implementation: files/check_for_approval.py
+          executor: central_deployment_agent
+          inputs:
+            requested_item_number:
+              get_label: sn_ref_number
+            username: { get_secret: servicenow_user }
+            password: { get_secret: servicenow_password }
+        poststart:
+          implementation: tf.nativeedge_tf.tasks.apply
+    relationships:
+      - target: terraform
+        type: nativeedge.relationships.terraform.run_on_host
+      - target: agent_key
+        type: nativeedge.relationships.depends_on
+
+  ansible_playbook:
+    type: nativeedge.nodes.ansible.Executor
+    properties:
+      playbook_path: files/playbooks/site.yaml
+      run_data:
+        port: { get_input: nginx_port }
+        message: { get_secret: ["ansible_playbook", "azure", {get_input: env_type}, "message"] }
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start:
+          implementation: ansible.ne_ansible.tasks.run
+          inputs:
+            playbook_path: files/playbooks/site.yaml
+            sources: { get_attribute: ["SELF", "sources"] }
+            save_playbook: true
+            number_of_attempts: 20
+        delete:
+          implementation: ansible.ne_ansible.tasks.cleanup
+    relationships:
+      - type: nativeedge.relationships.ansible.connected_to_host
+        target: cloud_resources
+        source_interfaces:
+          nativeedge.interfaces.relationship_lifecycle:
+            preconfigure:
+              implementation: ansible.ne_ansible.tasks.ansible_requires_host
+              inputs:
+                group_name: webserver
+                hostname: nginx
+                host_config:
+                  ansible_host: { get_attribute: ["cloud_resources", "outputs", "public_ip", "value"] }
+                  ansible_user: azureuser
+                  ansible_ssh_private_key_file: { get_attribute: ["agent_key", "private_key_export"] }
+                  ansible_become: true
+                  ansible_ssh_common_args: -o StrictHostKeyChecking=no
+            unlink: {}
+
+  agent_key:
+    type: nativeedge.nodes.keys.RSAKey
+    properties:
+      resource_config:
+        key_name: agent_key
+        openssh_format: true
+      use_secret_store: true
+      use_secrets_if_exist: true
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: keys.ne_ssh_key.operations.create
+          inputs:
+            store_private_key_material: true
+capabilities:
+
+  plan:
+    value:
+      get_attributes_list:
+        - cloud_resources
+        - plain_text_plan
+
+  cost:
+    value:
+      get_attributes_list:
+        - cloud_resources
+        - plain_text_infracost
+
+  name:
+    value:
+      get_attributes_list:
+        - cloud_resources
+        - resources
+        - example_vm
+        - instances
+        - 0
+        - attributes
+        - tags
+        - Name
+
+  endpoint:
+    description: The external endpoint of the application.
+    value:
+      get_attributes_list:
+        - cloud_resources
+        - outputs
+        - public_ip
+        - value
+
+  user:
+    description: user ID.
+    value: azureuser
+
+  key_content:
+    description: Private agent key
+    value: { get_attribute: ["agent_key", "private_key_export"] }
+groups:
+
+  server_and_app:
+    members:
+      - cloud_resources
+      - ansible_playbook
+policies:
+
+  scale_policy:
+    type: nativeedge.policies.scaling
+    properties:
+      default_instances: { get_input: vm_count }
+      min_instances: 1
+      max_instances: 3
+    targets:
+      - server_and_app
+

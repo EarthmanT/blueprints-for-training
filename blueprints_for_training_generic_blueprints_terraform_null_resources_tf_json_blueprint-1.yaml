@@ -1,0 +1,27 @@
+tosca_definitions_version: nativeedge_1_0
+description: blueprints_test_terraform_local Description
+
+imports:
+  - nativeedge/types/types.yaml
+  - plugin:nativeedge-terraform-plugin
+inputs: null
+
+node_templates:
+
+  terraform:
+    type: nativeedge.nodes.terraform
+    properties:
+      resource_config:
+        installation_source: https://releases.hashicorp.com/terraform/0.14.11/terraform_0.14.11_linux_amd64.zip
+
+  cloud_resources:
+    type: nativeedge.nodes.terraform.Module
+    properties:
+      resource_config:
+        source:
+          location: tf_module/null.tf.json
+        source_path: ''
+    relationships:
+      - target: terraform
+        type: nativeedge.relationships.terraform.run_on_host
+

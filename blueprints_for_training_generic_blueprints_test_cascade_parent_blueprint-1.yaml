@@ -1,0 +1,31 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  This blueprint mock runtime for a node and use it later.
+
+imports:
+  - nativeedge/types/types.yaml
+
+node_templates:
+
+  middle:
+    type: nativeedge.nodes.ServiceComponent
+    properties:
+      client:
+        host: 127.0.0.1
+        port: 80
+        protocol: http
+        username: admin
+        password: admin
+        tenant: test
+      resource_config:
+        blueprint:
+          external_resource: true
+          id: middle
+        deployment:
+          id: middle_1
+workflows:
+
+  cascade_action:
+    mapping: scripts/cascade.py
+

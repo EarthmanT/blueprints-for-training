@@ -1,0 +1,109 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  This blueprint is used by developer where it will prepare an environment ready for writing microservices based on pre-written templates , then it will provide two jenkins pipeline trigger URLs to build a container and publish it to Kubernetes Cluster
+
+imports:
+  - nativeedge/types/types.yaml
+  - plugin:nativeedge-terraform-plugin
+labels:
+
+  csys-obj-type:
+    values:
+      - service
+
+  csys-obj-parent:
+    values:
+      - { get_input: environment }
+
+inputs:
+
+  environment:
+    type: deployment_id
+    constraints:
+      - labels:
+          - csys-obj-type: environment
+
+  project_key:
+    type: string
+    hidden: true
+    default: CLOUD
+
+  microservicee_codebase:
+    type: string
+    default: nodejs
+    constraints:
+      - valid_values:
+          - nodejs
+          - python
+
+  repository_name:
+    type: string
+    default: { concat: [{get_input: microservicee_codebase}, "-test"] }
+
+  repository_to_fork:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: microservicee_codebase}, "-template"] }
+
+  microservice_namespace:
+    description: Namespace to publish the microservice into
+    type: string
+    default: ns1
+
+  microservice_name:
+    description: Microservice name
+    type: string
+    default: ms1
+
+  microservice_port:
+    type: string
+    description: Microservice exposed port
+    default: 8000
+    constraints:
+      - valid_values:
+          - 80
+          - 8000
+
+node_templates:
+
+  terraform:
+    type: nativeedge.nodes.terraform
+    properties:
+      resource_config:
+        installation_source: https://releases.hashicorp.com/terraform/0.14.11/terraform_0.14.11_linux_amd64.zip
+        plugins:
+          bitbucketserver: https://github.com/gavinbunney/terraform-provider-bitbucketserver/releases/download/v1.7.1/terraform-provider-bitbucketserver_1.7.1_linux_amd64.zip
+
+  bitbucket_repo:
+    type: nativeedge.nodes.terraform.Module
+    properties:
+      resource_config:
+        source:
+          location: tf_module/bitbucket.zip
+        source_path: bitbucket
+        variables:
+          bitbucket_server: { get_secret: bitbucket_server }
+          bitbucket_username: { get_secret: bitbucket_username }
+          bitbucket_password: { get_secret: bitbucket_password }
+          bitbucket_project_key: { get_input: project_key }
+          bitbucket_repository: { get_input: repository_name }
+          is_public_repository: true
+          bitbucket_repository_to_fork: { get_input: repository_to_fork }
+    relationships:
+      - target: terraform
+        type: nativeedge.relationships.terraform.run_on_host
+capabilities:
+
+  repo_url:
+    description: Repo http url to clone from
+    value: { get_attribute: ["bitbucket_repo", "outputs", "repo_url", "value"] }
+
+  jenkins_url:
+    description: Jenkins Job Trigger URL - push container to environemnt
+    value: { concat: [{get_secret: jenkins_server}, "/job/publish-development-microservice/buildWithParameters?image_name=", {get_input: repository_name}, "&bitbucket_url=", {get_attribute: [bitbucket_repo, outputs, repo_url, value]}, "&namespace=", {get_input: microservice_namespace}, "&microservice_name=", {get_input: microservice_name}, "&parent_environment=", {get_input: environment}, "&microservice_port=", {get_input: microservice_port}] }
+
+  promote_url:
+    description: Jenkins Job Trigger URL - push container to production environemnt
+    value: { concat: [{get_secret: jenkins_server}, "/job/publish-production-microservice/buildWithParameters?image_name=", {get_input: repository_name}, "&bitbucket_url=", {get_attribute: [bitbucket_repo, outputs, repo_url, value]}, "&namespace=", {get_input: microservice_namespace}, "&microservice_name=", {get_input: microservice_name}, "&microservice_port=", {get_input: microservice_port}] }
+

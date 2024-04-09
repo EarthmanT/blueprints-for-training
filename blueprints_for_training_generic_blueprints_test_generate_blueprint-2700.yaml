@@ -1,0 +1,62 @@
+tosca_definitions_version: nativeedge_1_0
+
+imports:
+  - nativeedge/types/types.yaml
+
+node_templates:
+
+  generate:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create: >
+          #!/bin/bash
+
+          # Path variables
+
+          deployment_path="/opt/manager/resources/deployments/default_tenant/test-generate"
+
+          # Prepare blueprint files
+
+          mkdir -p ${deployment_path}/dummy
+
+          ctx download-resource resources/blueprint.yaml '@{"target_path": "'"${deployment_path}"'/dummy/blueprint.yaml"}'
+
+          # Zip blueprint archives
+
+          cd ${deployment_path}
+
+          zip -rq dummy.zip dummy
+
+  test_file:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create: >
+          #!/bin/bash
+
+          ctx logger info 'going to download dummy'
+
+          ctx download-resource dummy.zip
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: generate
+
+  test_component:
+    type: nativeedge.nodes.ServiceComponent
+    properties:
+      resource_config:
+        blueprint:
+          external_resource: false
+          id: { concat: ["dummy-", {get_sys: [deployment, id]}] }
+          blueprint_archive: dummy.zip
+          main_file_name: blueprint.yaml
+        deployment:
+          id: { concat: ["dummy-", {get_sys: [deployment, id]}] }
+          auto_inc_suffix: true
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: generate
+      - type: nativeedge.relationships.depends_on
+        target: test_file
+

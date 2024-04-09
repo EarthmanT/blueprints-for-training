@@ -1,0 +1,58 @@
+tosca_definitions_version: nativeedge_1_0
+description: blueprints_test_terraform_apigateway_lamba Description
+
+imports:
+  - nativeedge/types/types.yaml
+  - plugin:nativeedge-terraform-plugin
+
+inputs:
+
+  aws_region:
+    type: string
+    default: us-east-1
+    constraints:
+      - valid_values:
+          - us-east-1
+          - us-west-1
+          - ca-central-1
+          - eu-west-1
+
+  api_gw_name:
+    type: string
+    default: cfy-apigw-url-test
+
+  url_endpoint:
+    type: string
+    default: https://www.google.com
+
+node_templates:
+
+  terraform:
+    type: nativeedge.nodes.terraform
+    properties:
+      resource_config:
+        installation_source: https://releases.hashicorp.com/terraform/1.2.7/terraform_1.2.7_linux_amd64.zip
+
+  cloud_resources:
+    type: nativeedge.nodes.terraform.Module
+    properties:
+      resource_config:
+        source:
+          location: tf_module/apigateway.zip
+        source_path: apigateway
+        variables:
+          aws_region: { get_input: aws_region }
+          api_gw_name: { get_input: api_gw_name }
+          url_endpoint: { get_input: url_endpoint }
+        environment_variables:
+          AWS_ACCESS_KEY_ID: { get_secret: aws_access_key_id }
+          AWS_SECRET_ACCESS_KEY: { get_secret: aws_secret_access_key }
+    relationships:
+      - target: terraform
+        type: nativeedge.relationships.terraform.run_on_host
+outputs:
+
+  api_gateway_url:
+    description: Repo http url to clone from
+    value: { get_attribute: ["cloud_resources", "outputs", "apigwy_url", "value"] }
+

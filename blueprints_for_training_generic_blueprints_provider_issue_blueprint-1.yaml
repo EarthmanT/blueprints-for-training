@@ -1,0 +1,37 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  This blueprint creates infrastructure using Terraform.
+
+imports:
+  - nativeedge/types/types.yaml
+  - plugin:nativeedge-terraform-plugin
+
+node_templates:
+
+  terraform:
+    type: nativeedge.nodes.terraform
+
+  terraform_module:
+    type: nativeedge.nodes.terraform.Module
+    properties:
+      resource_config:
+        provider:
+          providers:
+            - name: azurerm
+              options:
+                features: {}
+                use_msi: 'true'
+                subscription_id: { concat: [\"\, {get_secret: ARM_SUBSCRIPTION_ID}, \"\] }
+                tenant_id: { concat: [\"\, {get_secret: ARM_TENANT_ID}, \"\] }
+        source:
+          location: terraform.zip
+        source_path: terraform
+    relationships:
+      - target: terraform
+        type: nativeedge.relationships.terraform.run_on_host
+capabilities:
+
+  outputs:
+    value: { get_attribute: ["terraform_module", "outputs"] }
+

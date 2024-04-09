@@ -1,0 +1,155 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  This blueprint is used to actually deploy the container into Kubernetes cluster and publish it to istio_ingress and create API Gateway for it
+
+imports:
+  - nativeedge/types/types.yaml
+  - plugin:nativeedge-kubernetes-plugin
+  - plugin:nativeedge-terraform-plugin
+labels:
+
+  csys-obj-type:
+    values:
+      - service
+
+  csys-obj-parent:
+    values:
+      - { get_input: environment }
+
+inputs:
+
+  environment:
+    type: deployment_id
+    constraints:
+      - labels:
+          - csys-obj-type: environment
+
+  microservice_namespace:
+    type: string
+    default: ns1
+
+  microservice_name:
+    type: string
+    default: ms1
+
+  microservice_image:
+    type: string
+    default: ahmadiesa/testapp:latest
+
+  microservice_port:
+    type: integer
+    default: 8000
+
+  aws_region:
+    type: string
+    hidden: true
+    default: { get_environment_capability: aws_region }
+
+node_templates:
+
+  terraform:
+    type: nativeedge.nodes.terraform
+    properties:
+      resource_config:
+        installation_source: https://releases.hashicorp.com/terraform/1.2.7/terraform_1.2.7_linux_amd64.zip
+
+  microservice_namespace:
+    type: nativeedge.nodes.kubernetes.resources.Namespace
+    properties:
+      client_config:
+        configuration:
+          api_options:
+            host: { get_environment_capability: cluster_endpoint }
+            api_key: { get_environment_capability: cluster_token }
+            verify_ssl: false
+      use_external_resource: true
+      create_if_missing: true
+      definition:
+        apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: { get_input: microservice_namespace }
+          labels:
+            istio-injection: enabled
+
+  microservice_service:
+    type: nativeedge.nodes.kubernetes.resources.FileDefinedResource
+    properties:
+      client_config:
+        configuration:
+          api_options:
+            host: { get_environment_capability: cluster_endpoint }
+            api_key: { get_environment_capability: cluster_token }
+            verify_ssl: false
+      options:
+        namespace: { get_input: microservice_namespace }
+      allow_node_redefinition: true
+      file:
+        resource_path: manifests/microservice_template.yaml
+        template_variables:
+          MICROSERVICE_NAME: { get_input: microservice_name }
+          MICROSERVICE_PORT: { get_input: microservice_port }
+          MICROSERVICE_IMAGE: { get_input: microservice_image }
+    relationships:
+      - target: microservice_namespace
+        type: nativeedge.relationships.contained_in
+
+  microservice_gateway:
+    type: nativeedge.nodes.Root
+    relationships:
+      - target: microservice_service
+        type: nativeedge.relationships.depends_on
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: scripts/setup_kubectl.sh
+          executor: central_deployment_agent
+        configure:
+          implementation: scripts/kubectl_apply.sh
+          executor: central_deployment_agent
+          inputs:
+            host: { get_environment_capability: cluster_endpoint }
+            token: { get_environment_capability: cluster_token }
+            gateway_resource_path: manifests/microservice_istio_template.yaml
+            istio_ingress_namespace: { get_input: microservice_namespace }
+            MICROSERVICE_NAME: { get_input: microservice_name }
+            MICROSERVICE_PORT: { get_input: microservice_port }
+        stop:
+          implementation: scripts/kubectl_delete.sh
+          executor: central_deployment_agent
+          inputs:
+            host: { get_environment_capability: cluster_endpoint }
+            token: { get_environment_capability: cluster_token }
+            gateway_resource_path: manifests/microservice_istio_template.yaml
+            istio_ingress_namespace: { get_input: microservice_namespace }
+            MICROSERVICE_NAME: { get_input: microservice_name }
+            MICROSERVICE_PORT: { get_input: microservice_port }
+        delete:
+          implementation: scripts/remove_kubectl.sh
+          executor: central_deployment_agent
+
+  api_gateway:
+    type: nativeedge.nodes.terraform.Module
+    properties:
+      resource_config:
+        source:
+          location: tf_module/apigateway.zip
+        source_path: apigateway
+        variables:
+          aws_region: { get_input: aws_region }
+          api_gw_name: { concat: [{get_input: microservice_name}, "-gateway"] }
+          url_endpoint: { concat: ["http://", {get_environment_capability: istio_ingress}, "/", {get_input: microservice_name}] }
+        environment_variables:
+          AWS_ACCESS_KEY_ID: { get_secret: aws_access_key_id }
+          AWS_SECRET_ACCESS_KEY: { get_secret: aws_secret_access_key }
+    relationships:
+      - target: terraform
+        type: nativeedge.relationships.terraform.run_on_host
+      - target: microservice_gateway
+        type: nativeedge.relationships.depends_on
+capabilities:
+
+  microservice_api_gateway:
+    value: { get_attribute: ["api_gateway", "outputs", "apigwy_url", "value"] }
+
