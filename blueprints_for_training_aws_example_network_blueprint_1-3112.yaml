@@ -1,0 +1,258 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  This blueprint creates an AWS network, including vpc, subnet, and required components to route internet access.
+
+imports:
+  - nativeedge/types/types.yaml
+  - plugin:nativeedge-aws-plugin
+labels:
+
+  csys-obj-type:
+    values:
+      - environment
+
+inputs:
+
+  aws_access_key_id:
+    display_label: Aws Access Key Id
+    type: string
+    description: YOUR AWS ACCESS KEY ID
+    default: { get_secret: aws_access_key_id }
+
+  aws_secret_access_key:
+    display_label: Aws Secret Access Key
+    type: string
+    description: YOUR AWS SECRET ACCESS KEY
+    default: { get_secret: aws_secret_access_key }
+
+  region_name:
+    display_label: Region Name
+    type: string
+    description: YOUR AWS REGION NAME
+    default: us-east-1
+
+  ec2_region_endpoint:
+    display_label: Ec2 Region Endpoint
+    type: string
+    default: { concat: ["ec2.", {get_input: region_name}, ".amazonaws.com"] }
+
+  availability_zone:
+    display_label: Availability Zone
+    type: string
+    default: { concat: [{get_input: region_name}, "b"] }
+
+  vpc_cidr:
+    display_label: Vpc Cidr
+    type: string
+    default: 10.11.0.0/16
+
+  public_subnet_cidr:
+    display_label: Public Subnet Cidr
+    type: string
+    default: 10.11.0.0/24
+
+  private_subnet_cidr:
+    display_label: Private Subnet Cidr
+    type: string
+    default: 10.11.1.0/24
+
+dsl_definitions:
+
+  aws_config:
+    aws_access_key_id: { get_input: aws_access_key_id }
+    aws_secret_access_key: { get_input: aws_secret_access_key }
+    aws_session_token: { get_secret: aws_session_token }
+    region_name: { get_input: region_name }
+
+node_templates:
+
+  vpc:
+    type: nativeedge.nodes.aws.ec2.Vpc
+    properties:
+      resource_config:
+        CidrBlock: { get_input: vpc_cidr }
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        aws_session_token: { get_secret: aws_session_token }
+        region_name: { get_input: region_name }
+
+  internet_gateway:
+    type: nativeedge.nodes.aws.ec2.InternetGateway
+    properties:
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        aws_session_token: { get_secret: aws_session_token }
+        region_name: { get_input: region_name }
+    relationships:
+      - type: nativeedge.relationships.connected_to
+        target: vpc
+
+  public_subnet:
+    type: nativeedge.nodes.aws.ec2.Subnet
+    properties:
+      resource_config:
+        CidrBlock: { get_input: public_subnet_cidr }
+        AvailabilityZone: { get_input: availability_zone }
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        aws_session_token: { get_secret: aws_session_token }
+        region_name: { get_input: region_name }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vpc
+      - type: nativeedge.relationships.depends_on
+        target: internet_gateway
+
+  private_subnet:
+    type: nativeedge.nodes.aws.ec2.Subnet
+    properties:
+      resource_config:
+        CidrBlock: { get_input: private_subnet_cidr }
+        AvailabilityZone: { get_input: availability_zone }
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        aws_session_token: { get_secret: aws_session_token }
+        region_name: { get_input: region_name }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vpc
+      - type: nativeedge.relationships.depends_on
+        target: internet_gateway
+
+  public_subnet_routetable:
+    type: nativeedge.nodes.aws.ec2.RouteTable
+    properties:
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        aws_session_token: { get_secret: aws_session_token }
+        region_name: { get_input: region_name }
+    relationships:
+      - type: nativeedge.relationships.contained_in
+        target: vpc
+      - type: nativeedge.relationships.connected_to
+        target: public_subnet
+
+  private_subnet_routetable:
+    type: nativeedge.nodes.aws.ec2.RouteTable
+    properties:
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        aws_session_token: { get_secret: aws_session_token }
+        region_name: { get_input: region_name }
+    relationships:
+      - type: nativeedge.relationships.contained_in
+        target: vpc
+      - type: nativeedge.relationships.connected_to
+        target: private_subnet
+
+  route_public_subnet_internet_gateway:
+    type: nativeedge.nodes.aws.ec2.Route
+    properties:
+      resource_config:
+        kwargs:
+          DestinationCidrBlock: 0.0.0.0/0
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        aws_session_token: { get_secret: aws_session_token }
+        region_name: { get_input: region_name }
+    relationships:
+      - type: nativeedge.relationships.contained_in
+        target: public_subnet_routetable
+      - type: nativeedge.relationships.connected_to
+        target: internet_gateway
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        stop: {}
+
+  nat_gateway_ip:
+    type: nativeedge.nodes.aws.ec2.ElasticIP
+    properties:
+      resource_config:
+        Domain: vpc
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        aws_session_token: { get_secret: aws_session_token }
+        region_name: { get_input: region_name }
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        stop: {}
+
+  nat_gateway:
+    type: nativeedge.nodes.aws.ec2.NATGateway
+    properties:
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        aws_session_token: { get_secret: aws_session_token }
+        region_name: { get_input: region_name }
+      resource_config:
+        kwargs:
+          ConnectivityType: public
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: public_subnet
+      - type: nativeedge.relationships.depends_on
+        target: nat_gateway_ip
+
+  route_private_subnet_nat_gateway:
+    type: nativeedge.nodes.aws.ec2.Route
+    properties:
+      resource_config:
+        kwargs:
+          DestinationCidrBlock: 0.0.0.0/0
+      client_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        aws_session_token: { get_secret: aws_session_token }
+        region_name: { get_input: region_name }
+    relationships:
+      - type: nativeedge.relationships.contained_in
+        target: private_subnet_routetable
+      - type: nativeedge.relationships.connected_to
+        target: nat_gateway
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        stop: {}
+capabilities:
+
+  vpc_id:
+    description: vpc id
+    value: { get_attribute: ["vpc", "aws_resource_id"] }
+
+  public_subnet_id:
+    description: public subnet id
+    value: { get_attribute: ["public_subnet", "aws_resource_id"] }
+
+  private_subnet_id:
+    description: private subnet id
+    value: { get_attribute: ["private_subnet", "aws_resource_id"] }
+
+  region_name:
+    description: aws region name
+    value: { get_input: region_name }
+
+  vpc_cidr:
+    description: vpc_cidr
+    value: { get_input: vpc_cidr }
+
+  public_subnet_cidr:
+    description: public_subnet_cidr
+    value: { get_input: public_subnet_cidr }
+
+  ec2_region_endpoint:
+    description: ec2 region endpoint
+    value: { get_input: ec2_region_endpoint }
+
+  availability_zone:
+    description: availability zone
+    value: { get_input: availability_zone }
+
