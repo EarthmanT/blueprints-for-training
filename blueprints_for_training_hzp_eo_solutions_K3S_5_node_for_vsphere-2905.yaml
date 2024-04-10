@@ -1,0 +1,2016 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  The blueprint creates VMs on 5 vSphere (5 servers with workload) And runs the k3s HA installation on the top of it.
+
+imports:
+  - nativeedge/types/types.yaml
+  - infrastructure/vsphere_vm/inputs_common.yaml
+  - infrastructure/vsphere_vm/single_node_inputs_common.yaml
+  - infrastructure/vsphere_vm/three_nodes_inputs.yaml
+  - infrastructure/vsphere_vm/three_nodes_inputs_common.yaml
+  - infrastructure/vsphere_vm/five_nodes_inputs_common.yaml
+  - infrastructure/vsphere_vm/node_definitions.yaml
+  - infrastructure/vsphere_vm/single_node_definitions.yaml
+  - infrastructure/vsphere_vm/three_nodes_definitions.yaml
+  - infrastructure/vsphere_vm/five_nodes_definitions.yaml
+  - infrastructure/vsphere_vm/five_nodes_blueprint_validator.yaml
+  - nvidia_drivers/inputs.yaml
+  - nvidia_drivers/three_nodes_vsphere_definitions.yaml
+  - nvidia_drivers/five_nodes_vsphere_definitions.yaml
+  - application/inputs.yaml
+  - application/inputs_common.yaml
+  - application/common_ha_inputs.yaml
+  - application/five_nodes_definitions.yaml
+  - outputs/single_node_outputs.yaml
+  - outputs/three_nodes_outputs.yaml
+  - outputs/five_nodes_outputs.yaml
+  - plugin:nativeedge-fabric-plugin
+  - plugin:nativeedge-utilities-plugin
+labels:
+
+  csys-obj-type:
+    values:
+      - environment
+
+  target_environment:
+    values:
+      - vsphere
+
+  vendor:
+    values:
+      - cncf
+
+  solution:
+    values:
+      - k8s
+      - k3s
+
+  version:
+    values:
+      - 1.26.5+k3s1
+blueprint_labels:
+
+  env:
+    values:
+      - vsphere
+
+inputs:
+
+  artifact_configuration_secret_name:
+    type: secret_key
+    hidden: false
+    allow_update: false
+    display_label: Artifact Configuration Secret Name
+    description: >
+      Secret name containing details needed for binary image and
+
+      artifacts download.
+
+  vm_template:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Template Name
+    description: >
+      Name of the Virtual Machine Template in vSphere.
+
+      Cannot contain leading or trailing spaces.
+    constraints:
+      - pattern: ^(?!\s)(?!.*\s$).*$
+        error_message: Cannot contain leading or trailing spaces.
+
+  hostname:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Hostname
+    description: >
+      Hostname of the Virtual Machine
+
+      (an auto-generated suffix will also be added).
+
+      Cannot contain characters other than:
+
+      letters (a-z, A-Z), numbers (0-9), or hyphens (-).
+
+      Can be up to 63 characters long.
+    constraints:
+      - pattern: ^(?!-)[a-zA-Z0-9-]{1,63}(?<!-)$
+        error_message: >
+          Must be letters (a-z, A-Z), numbers (0-9), or hyphens (-).
+
+          No more than 64 characters.
+      - max_length: 64
+
+  vm_user_name:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Deployment User
+    description: >
+      Name of deployment user in the Virtual Machine template in vSphere.
+
+      Cannot contain leading or trailing spaces.
+    default: ubuntu
+    constraints:
+      - pattern: ^(?!\s)(?!.*\s$).*$
+        error_message: Cannot contain leading or trailing spaces.
+
+  ssh_user_private_key_secret_name:
+    type: secret_key
+    hidden: false
+    allow_update: false
+    display_label: SSH Private Key Secret Name
+    description: >
+      Name of the secret storing the SSH private key for the Virtual Machine.
+
+  ssh_user_public_key_secret_name:
+    type: secret_key
+    hidden: false
+    allow_update: false
+    display_label: SSH Public Key Secret Name
+    description: >
+      Name of the secret storing the SSH private key for the Virtual Machine.
+
+  resource_pool_name:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Resource Pool
+    description: Name of the Resource Pool in vSphere.
+    constraints:
+      - pattern: ^(?!\s)(?!.*\s$).*$
+        error_message: Cannot contain leading or trailing spaces.
+
+  vm_folder:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: VM Folder
+    description: >
+      Name of the folder in vSphere to deploy a Virtual Machine in to.
+
+      Cannot contain leading or trailing spaces.
+    constraints:
+      - pattern: ^(?!\s)(?!.*\s$).*$
+        error_message: Cannot contain leading or trailing spaces.
+
+  vcpus:
+    type: integer
+    hidden: false
+    display_label: vCPUs
+    description: >
+      Number of virtual CPUs allocated to the Virtual Machine.
+
+      See more about sizing recommendations:
+
+      https://docs.k3s.io/installation/requirements
+    default: 2
+    constraints:
+      - greater_or_equal: 2
+
+  memory_size:
+    type: integer
+    hidden: false
+    display_label: Memory Size
+    description: >
+      Memory (in MB) allocated to the Virtual Machine.
+
+      See more about sizing recommendations:
+
+      https://docs.k3s.io/installation/requirements
+    default: 4096
+    constraints:
+      - greater_or_equal: 2048
+
+  os_disk_size:
+    type: integer
+    hidden: false
+    display_label: OS Disk Size
+    description: >
+      Main OS disk size in GB.
+
+      See more about sizing recommendations:
+
+      https://docs.k3s.io/installation/requirements
+    default: 100
+    constraints:
+      - greater_or_equal: 10
+
+  disk_provisioning:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Disk Provisioning Type
+    description: OS Disk provisioning type for Virtual Machine in vSphere.
+    default: thin
+    constraints:
+      - valid_values:
+          - thickLazyZeroed
+          - thickEagerZeroed
+          - thin
+
+  storage_disk_size:
+    type: integer
+    hidden: true
+    allow_update: false
+    display_label: Storage Disk Size [GB]
+    description: >
+      Additional disks size in GB.
+
+      See more about sizing recommendations:
+
+      https://docs.k3s.io/installation/requirements
+    default: 0
+
+  disks_count:
+    type: integer
+    hidden: true
+    allow_update: false
+    display_label: Storage Disks Count
+    description: Number of additional disks attached to the VM.
+    default: 0
+    constraints:
+      - in_range:
+          - 0
+          - 1
+
+  storage_disk_provisioning:
+    type: string
+    hidden: true
+    allow_update: false
+    display_label: Storage Disk Provisioning Type
+    description: Storage Disk provisioning type for VM in vSphere.
+    default: thin
+    constraints:
+      - valid_values:
+          - thick
+          - thin
+
+  cpu_hot_add:
+    type: boolean
+    hidden: true
+    display_label: CPU Hot Add Enabled
+    description: Enable CPU Hot Add for VM.
+    default: false
+
+  cpu_hot_remove:
+    type: boolean
+    hidden: true
+    display_label: CPU Hot Remove Enabled
+    description: Enable CPU Hot Remove for VM.
+    default: true
+
+  memory_hot_add:
+    type: boolean
+    hidden: true
+    display_label: Memory Hot Add Enabled
+    description: Enable Memory Hot Add for VM.
+    default: true
+
+  pci_turn_off_vm:
+    type: boolean
+    display_label: PCI turn on vm after attach
+    description: PCI turn off/on vm
+    default: true
+    hidden: true
+
+  vm01_network_mappings:
+    type: dict
+    hidden: false
+    display_label: VM 01 - Network Mappings
+    description: >
+      Array of key-value details for the OVF network setup.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+
+  vm01_datastore_name:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: VM 01 - Datastore
+    description: >
+      Name of the Datastore to use with the Virtual Machine.
+
+      Cannot contain leading or trailing spaces.
+
+      Example: VxRail-Virtual-SAN-Datastore-123abc
+    constraints:
+      - pattern: ^(?!\s)(?!.*\s$).*$
+        error_message: >
+          Cannot contain leading or trailing spaces.
+
+          Example: VxRail-Virtual-SAN-Datastore-123abc
+
+  vm01_allowed_esxi_host:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: VM 01 - ESXi Hostnames
+    description: >
+      Names of the ESXi hosts on which the Virtual Machine should be placed.
+
+      Mandatory for USB passthrough.
+
+      Example: [node--01.example.local, node--02.example.local]
+    default: []
+
+  vm01_pci_devices:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: VM 01 - PCI Devices
+    description: >
+      List of PCI Devices that will be created and attached
+
+      to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: []
+
+  vm01_usb_devices:
+    type: list
+    hidden: true
+    allow_update: false
+    display_label: VM 01 - USB Devices
+    description: >
+      List of USB Devices that will be created and attached
+
+      to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: []
+
+  vm01_serial_ports:
+    type: list
+    hidden: true
+    allow_update: false
+    display_label: VM 01 - Serial Ports
+    description: >
+      A list of serial ports to pass through to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: []
+
+  vm01_vm_advanced_parameters:
+    type: dict
+    hidden: false
+    allow_update: false
+    display_label: VM 01 - Advanced Parameters
+    description: >
+      Any vSphere advanced parameters to apply to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: {}
+
+  vm01_cloudinit:
+    type: dict
+    hidden: true
+    display_label: VM 01 - Cloud Init Config
+    description: >
+      Cloud init cloud config, can be obtained with
+
+      nativeedge.nodes.CloudInit.CloudConfig
+    required: false
+    default: {}
+
+  verify_affinity:
+    type: boolean
+    allow_update: false
+    display_label: Verify Hosts Affinity
+    description: >
+      Verify if hosts inputs are unique for vsphere.
+    default: true
+
+  vm02_network_mappings:
+    type: dict
+    hidden: false
+    display_label: VM 02 - Network Mappings
+    description: >
+      Array of key-value details for the OVF network setup.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+
+  vm02_datastore_name:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: VM 02 - Datastore
+    description: >
+      Name of the Datastore to use with the Virtual Machine.
+
+      Cannot contain leading or trailing spaces.
+
+      Example: VxRail-Virtual-SAN-Datastore-123abc
+    constraints:
+      - pattern: ^(?!\s)(?!.*\s$).*$
+        error_message: >
+          Cannot contain leading or trailing spaces.
+
+          Example: VxRail-Virtual-SAN-Datastore-123abc
+
+  vm02_allowed_esxi_host:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: VM 02 - ESXi Hostnames
+    description: >
+      Names of the ESXi hosts on which the Virtual Machine should be placed.
+
+      Mandatory for USB passthrough.
+
+      Example: [node--01.example.local, node--02.example.local]
+    default: []
+
+  vm02_pci_devices:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: VM 02 - PCI Devices
+    description: >
+      List of PCI Devices that will be created and attached
+
+      to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: []
+
+  vm02_usb_devices:
+    type: list
+    hidden: true
+    allow_update: false
+    display_label: VM 02 - USB Devices
+    description: >
+      List of USB Devices that will be created and attached
+
+      to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: []
+
+  vm02_serial_ports:
+    type: list
+    hidden: true
+    allow_update: false
+    display_label: VM 02 - Serial Ports
+    description: >
+      A list of serial ports to pass through to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: []
+
+  vm02_cloudinit:
+    type: dict
+    hidden: true
+    display_label: VM 02 - Cloud Init Config
+    description: >
+      Cloud init cloud config, can be obtained with
+
+      nativeedge.nodes.CloudInit.CloudConfig
+    required: false
+    default: {}
+
+  vm02_vm_advanced_parameters:
+    type: dict
+    hidden: false
+    allow_update: false
+    display_label: VM 02 - Advanced Parameters
+    description: >
+      Any vSphere advanced parameters to apply to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: {}
+
+  vm03_network_mappings:
+    type: dict
+    hidden: false
+    display_label: VM 03 - Network Mappings
+    description: >
+      Array of key-value details for the OVF network setup.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+
+  vm03_datastore_name:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: VM 03 - Datastore
+    description: >
+      Name of the Datastore to use with the Virtual Machine.
+
+      Cannot contain leading or trailing spaces.
+
+      Example: VxRail-Virtual-SAN-Datastore-123abc
+    constraints:
+      - pattern: ^(?!\s)(?!.*\s$).*$
+        error_message: >
+          Cannot contain leading or trailing spaces.
+
+          Example: VxRail-Virtual-SAN-Datastore-123abc
+
+  vm03_allowed_esxi_host:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: VM 03 - ESXi Hostnames
+    description: >
+      Names of the ESXi hosts on which the Virtual Machine should be placed.
+
+      Mandatory for USB passthrough.
+
+      Example: [node--01.example.local, node--02.example.local]
+    default: []
+
+  vm03_pci_devices:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: VM 03 - PCI Devices
+    description: >
+      List of PCI Devices that will be created and attached
+
+      to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: []
+
+  vm03_usb_devices:
+    type: list
+    hidden: true
+    allow_update: false
+    display_label: VM 03 - USB Devices
+    description: >
+      List of USB Devices that will be created and attached
+
+      to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: []
+
+  vm03_serial_ports:
+    type: list
+    hidden: true
+    allow_update: false
+    display_label: VM 03 - Serial Ports
+    description: >
+      A list of serial ports to pass through to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: []
+
+  vm03_cloudinit:
+    type: dict
+    hidden: true
+    display_label: VM 03 - Cloud Init Config
+    description: >
+      Cloud init cloud config, can be obtained with
+
+      nativeedge.nodes.CloudInit.CloudConfig
+    required: false
+    default: {}
+
+  vm03_vm_advanced_parameters:
+    type: dict
+    hidden: false
+    allow_update: false
+    display_label: VM 03 - Advanced Parameters
+    description: >
+      Any vSphere advanced parameters to apply to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: {}
+
+  vm04_network_mappings:
+    type: dict
+    hidden: false
+    display_label: VM 04 - Network Mappings
+    description: >
+      Array of key-value details for the OVF network setup.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+
+  vm04_datastore_name:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: VM 04 - Datastore
+    description: >
+      Name of the Datastore to use with the Virtual Machine.
+
+      Cannot contain leading or trailing spaces.
+
+      Example: VxRail-Virtual-SAN-Datastore-123abc
+    constraints:
+      - pattern: ^(?!\s)(?!.*\s$).*$
+        error_message: >
+          Cannot contain leading or trailing spaces.
+
+          Example: VxRail-Virtual-SAN-Datastore-123abc
+
+  vm04_allowed_esxi_host:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: VM 04 - ESXi Hostnames
+    description: >
+      Names of the ESXi hosts on which the Virtual Machine should be placed.
+
+      Mandatory for USB passthrough.
+
+      Example: [node--01.example.local, node--02.example.local]
+    default: []
+
+  vm04_pci_devices:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: VM 04 - PCI Devices
+    description: >
+      List of PCI Devices that will be created and attached
+
+      to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: []
+
+  vm04_usb_devices:
+    type: list
+    hidden: true
+    allow_update: false
+    display_label: VM 04 - USB Devices
+    description: >
+      List of USB Devices that will be created and attached
+
+      to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: []
+
+  vm04_serial_ports:
+    type: list
+    hidden: true
+    allow_update: false
+    display_label: VM 04 - Serial Ports
+    description: >
+      A list of serial ports to pass through to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: []
+
+  vm04_cloudinit:
+    type: dict
+    hidden: true
+    display_label: VM 04 - Cloud Init Config
+    description: >
+      Cloud init cloud config, can be obtained with
+
+      nativeedge.nodes.CloudInit.CloudConfig
+    required: false
+    default: {}
+
+  vm04_vm_advanced_parameters:
+    type: dict
+    hidden: false
+    allow_update: false
+    display_label: VM 04 - Advanced Parameters
+    description: >
+      Any vSphere advanced parameters to apply to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: {}
+
+  vm05_network_mappings:
+    type: dict
+    hidden: false
+    display_label: VM 05 - Network Mappings
+    description: >
+      Array of key-value details for the OVF network setup.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+
+  vm05_datastore_name:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: VM 05 - Datastore
+    description: >
+      Name of the Datastore to use with the Virtual Machine.
+
+      Cannot contain leading or trailing spaces.
+
+      Example: VxRail-Virtual-SAN-Datastore-123abc
+    constraints:
+      - pattern: ^(?!\s)(?!.*\s$).*$
+        error_message: >
+          Cannot contain leading or trailing spaces.
+
+          Example: VxRail-Virtual-SAN-Datastore-123abc
+
+  vm05_allowed_esxi_host:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: VM 05 - ESXi Hostnames
+    description: >
+      Names of the ESXi hosts on which the Virtual Machine should be placed.
+
+      Mandatory for USB passthrough.
+
+      Example: [node--01.example.local, node--02.example.local]
+    default: []
+
+  vm05_pci_devices:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: VM 05 - PCI Devices
+    description: >
+      List of PCI Devices that will be created and attached
+
+      to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: []
+
+  vm05_usb_devices:
+    type: list
+    hidden: true
+    allow_update: false
+    display_label: VM 05 - USB Devices
+    description: >
+      List of USB Devices that will be created and attached
+
+      to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: []
+
+  vm05_serial_ports:
+    type: list
+    hidden: true
+    allow_update: false
+    display_label: VM 05 - Serial Ports
+    description: >
+      A list of serial ports to pass through to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: []
+
+  vm05_cloudinit:
+    type: dict
+    hidden: true
+    display_label: VM 05 - Cloud Init Config
+    description: >
+      Cloud init cloud config, can be obtained with
+
+      nativeedge.nodes.CloudInit.CloudConfig
+    required: false
+    default: {}
+
+  vm05_vm_advanced_parameters:
+    type: dict
+    hidden: false
+    allow_update: false
+    display_label: VM 05 - Advanced Parameters
+    description: >
+      Any vSphere advanced parameters to apply to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: {}
+
+  driver_packages_url:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "drivers.tar.gz"] }
+    description: >
+      Solution example RPM can be dowloaded from https://example.com/solutions/example/2.0.0
+
+  build_essential_packages_url:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "build_essential_packages.tar.gz"] }
+    description: >
+      Solution example RPM can be dowloaded from https://example.com/solutions/example/2.0.0
+
+  driver_install_script:
+    type: string
+    hidden: false
+    display_label: Driver Installation Script
+    description: Driver Installation Script
+    default: NVIDIA-Linux-x86_64-535.154.05.run
+
+  driver_install_params:
+    type: string
+    hidden: false
+    display_label: Driver Installation Params
+    description: Driver Installation Params
+    allow_update: false
+    default: --silent
+
+  packages_list:
+    type: list
+    display_label: Additional Packages
+    description: List of packages needed for driver installation
+    required: false
+    hidden: false
+    default:
+      - ./libnvidia-container1_1.14.4-1_amd64.deb
+      - ./libnvidia-container-tools_1.14.4-1_amd64.deb
+      - ./nvidia-container-toolkit-base_1.14.4-1_amd64.deb
+      - ./nvidia-container-toolkit_1.14.4-1_amd64.deb
+
+  k3s_version:
+    type: string
+    display_label: K3s Version
+    description: K3s version to install
+    default: v1.26.5+k3s1
+    constraints:
+      - valid_values:
+          - v1.26.5+k3s1
+          - v1.26.10+k3s2
+          - v1.27.8+k3s2
+          - v1.28.4+k3s2
+
+  taint_controlplane:
+    type: boolean
+    display_label: Taint Control Plane
+    description: If true, taints control plane (controlplane) nodes
+    hidden: true
+    default: false
+
+  disable_local_storage:
+    type: boolean
+    display_label: Disable Local Storage
+    description: If true, disables local storage
+    hidden: true
+    default: true
+
+  enable_nfs_storage:
+    type: boolean
+    display_label: NFS Storage Class
+    description: Enable to use NFS storage class
+    default: false
+
+  nfs_server:
+    type: string
+    display_label: NFS Server IP Address
+    description: 'IP address. Example: 171.16.0.1'
+    required: false
+    constraints:
+      - pattern: ^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$|^$
+        error_message: >
+          Invalid format for IP Address.
+
+          Example: 172.16.0.1
+
+  nfs_path:
+    type: string
+    display_label: NFS Path
+    description: >
+      Path to the NFS shared directory on the server.
+
+      Example: /nfs
+    required: false
+    constraints:
+      - pattern: ^/|(/[\w-]+)+$
+        error_message: >
+          Invalid format for NFS shared directory path.
+
+          Example: /nfs
+
+  nfs_sc_name:
+    type: string
+    display_label: NFS Storage Class
+    description: >
+      Name of the NFS storage class.
+
+      Example: nfs
+    default: nfs
+    constraints:
+      - pattern: ^[a-z]+(-[a-z]+)*$
+        error_message: >
+          Invalid format for NFS storage class name. Lowercase letters only.
+
+          Example: nfs
+      - min_length: 1
+      - max_length: 63
+
+  k3s_bin:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "k3s"] }
+    description: >
+      Solution example RPM can be dowloaded from https://example.com/solutions/example/2.0.0
+
+  k3s_images_tar_archive:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "k3s-airgap-images-amd64.tar"] }
+    description: >
+      Dependency library that can be downloaded from https://example.domain.com/libs/v2.0.0/library-example-2.0.0.tar.gz
+
+  longhorn_images_tar_archive:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "longhorn_images.tar.gz"] }
+    description: >
+      Dependency library that can be downloaded from https://example.domain.com/libs/v2.0.0/library-example-2.0.0.tar.gz
+
+  helm_tar_archive:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "helm-v3.12.1-linux-amd64.tar.gz"] }
+    description: >
+      Dependency library that can be downloaded from https://example.domain.com/libs/v2.0.0/library-example-2.0.0.tar.gz
+
+  nfs_subdir_external_provisioner_tar_archive:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "nfs-subdir-external-provisioner.tar"] }
+    description: >
+      Dependency library that can be downloaded from https://example.domain.com/libs/v2.0.0/library-example-2.0.0.tar.gz
+
+  nfs_common_packages_tar_archive:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "nfs_common_packages.tar.gz"] }
+    description: >
+      Dependency library that can be downloaded from https://example.domain.com/libs/v2.0.0/library-example-2.0.0.tar.gz
+
+  interface:
+    type: string
+    display_label: Interface Name
+    description: >
+      Name of interface
+
+      Some ubuntu 22.04 images use ens192 or ens160 interface
+    default: enp1s0
+
+  install_nvidia_device_plugin:
+    type: boolean
+    display_label: Install Nvidia Device Plugin
+    description: If true, Nvidia Device Plugin will be installed.
+    hidden: false
+    default: false
+
+  nvidia_image_tar_archive:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "nvidia_device_plugin.tar.gz"] }
+    description: >
+      Dependency library that can be downloaded from https://example.domain.com/libs/v2.0.0/library-example-2.0.0.tar.gz
+
+  environment_type:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Air-Gapped
+    description: >
+      Choose "airgapped" - all the binaries will be downloaded from the local
+
+      artifact store, or "internet_connected" for binaries that are available
+
+      on the Internet with a public URL.
+    default: internet_connected
+    constraints:
+      - valid_values:
+          - airgapped
+          - internet_connected
+
+  artifact_base_url:
+    type: string
+    hidden: true
+    display_label: Artifact Download Base URL
+    description: Artifact Download Base URL value from secret.
+    default: { get_secret: [{get_input: artifact_configuration_secret_name}, "artifact_base_url"] }
+
+  artifact_download_config_secret_name:
+    type: list
+    hidden: true
+    display_label: Artifact Download Config Secret Name
+    description: >
+      The secret name that contains the config used for download
+
+      framework to fetch artifacts.
+    default:
+      - { get_input: artifact_configuration_secret_name }
+      - artifact_curl_config
+
+  vip_dhcp:
+    type: boolean
+    allow_update: false
+    display_label: Use DHCP for VIP
+    description: Switch used to enable DHCP for VIP Address assignment
+    default: false
+
+  vip_address:
+    type: string
+    display_label: Kube VIP IP
+    description: >
+      IP address. Example: 171.16.0.1.
+
+      Must be on the same subnet as the K3s Virtual Machines
+    constraints:
+      - pattern: ^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$
+        error_message: >
+          Invalid format for IP Address.
+
+          Example: 172.16.0.1
+    required: false
+    allow_update: false
+
+  kube_vip_image_tar_archive:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "kube_vip.tar"] }
+    description: >
+      Dependency library that can be downloaded from https://example.domain.com/libs/v2.0.0/library-example-2.0.0.tar.gz
+
+  nginx_image_tar_archive:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "nginx.tar"] }
+    description: >
+      Dependency library that can be downloaded from https://example.domain.com/libs/v2.0.0/library-example-2.0.0.tar.gz
+node_types:
+
+  nativeedge.nodes.AllowedHostsValidator:
+    derived_from: nativeedge.nodes.Root
+    properties:
+      hosts:
+        default: []
+      verify_affinity:
+        default: false
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        configure:
+          implementation: infrastructure/vsphere_vm/scripts/vm_inputs_formater.py
+          executor: central_deployment_agent
+          inputs:
+            hosts:
+              default: { get_property: ["SELF", "hosts"] }
+        start:
+          implementation: infrastructure/vsphere_vm/scripts/verify_affinity.py
+          executor: central_deployment_agent
+          inputs:
+            verify_affinity:
+              default: { get_property: ["SELF", "verify_affinity"] }
+            hosts:
+              default: { get_attribute: ["SELF", "allowed_hosts"] }
+
+  nativeedge.nodes.K3S.VmInfo:
+    derived_from: nativeedge.nodes.Root
+    properties:
+      vm_host:
+        default: ''
+      vm_name:
+        default: ''
+      vm_username:
+        default: ''
+      vm_ssh_key_secret_name:
+        default: ''
+      vm_ssh_port:
+        default: 22
+      vm_public_ip:
+        default: ''
+      vm_interface:
+        default: ''
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: infrastructure/vsphere_vm/scripts/get_vm_info.sh
+            fabric_env:
+              default:
+                host_string: { get_property: ["SELF", "vm_host"] }
+                user: { get_property: ["SELF", "vm_username"] }
+                key: { get_secret: {get_property: [SELF, vm_ssh_key_secret_name]} }
+                port: { get_property: ["SELF", "vm_ssh_port"] }
+            process:
+              default:
+                env:
+                  VM_HOST: { get_property: ["SELF", "vm_host"] }
+                  VM_PUBLIC_IP: { get_property: ["SELF", "vm_public_ip"] }
+                  VM_NAME: { get_property: ["SELF", "vm_name"] }
+                  VM_USERNAME: { get_property: ["SELF", "vm_username"] }
+                  VM_SSH_PORT: { get_property: ["SELF", "vm_ssh_port"] }
+                  INTERFACE: { get_property: ["SELF", "vm_interface"] }
+
+  nativeedge.nodes.VerifyNetworkConnectivity:
+    derived_from: nativeedge.nodes.Root
+    properties:
+      networks:
+        default: []
+      netmasks:
+        default: []
+      default_routes:
+        default: []
+      kube_vip:
+        default: ''
+      vm_ips:
+        default: []
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: infrastructure/vsphere_vm/scripts/verify_network_connectivity.py
+          executor: central_deployment_agent
+          inputs:
+            networks:
+              default: { get_property: ["SELF", "networks"] }
+            netmasks:
+              default: { get_property: ["SELF", "netmasks"] }
+            default_routes:
+              default: { get_property: ["SELF", "default_routes"] }
+            kube_vip:
+              default: { get_property: ["SELF", "kube_vip"] }
+            vm_ips:
+              default: { get_property: ["SELF", "vm_ips"] }
+
+node_templates:
+
+  vm_01:
+    type: nativeedge.nodes.ServiceComponent
+    properties:
+      resource_config:
+        blueprint:
+          external_resource: true
+          id: Virtual_Machine_with_cloud-init_for_vSphere_2.0.0
+        deployment:
+          id: ''
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        configure:
+          inputs:
+            timeout: 1800
+            resource_config:
+              blueprint: { get_property: ["SELF", "resource_config", "blueprint"] }
+              deployment:
+                display_name: { concat: [{get_sys: [deployment, name]}, "_node01"] }
+                inputs:
+                  vsphere_secret_name: { get_environment_capability: vcenter_credentials }
+                  template_name: { get_input: vm_template }
+                  hostname: { concat: [{get_input: hostname}, "-node01"] }
+                  vm_user_name: { get_input: vm_user_name }
+                  key_private_secret_name: { get_input: ssh_user_private_key_secret_name }
+                  key_public_secret_name: { get_input: ssh_user_public_key_secret_name }
+                  allowed_esxi_hosts: { get_attribute: ["allowed_hosts_validator", "ALLOWED_ESXI_HOST1"] }
+                  resource_pool_name: { get_input: resource_pool_name }
+                  vm_folder_name: { get_input: vm_folder }
+                  datastore_name: { get_input: vm01_datastore_name }
+                  vcpu: { get_input: vcpus }
+                  memory_size: { get_input: memory_size }
+                  os_disk_size: { get_input: os_disk_size }
+                  disk_provisioning: { get_input: disk_provisioning }
+                  storage_disk_size: { get_input: storage_disk_size }
+                  disks_count: { get_input: disks_count }
+                  storage_disk_provisioning: { get_input: storage_disk_provisioning }
+                  networking: { get_input: vm01_network_mappings }
+                  pci_devices: { get_input: vm01_pci_devices }
+                  usb_devices: { get_input: vm01_usb_devices }
+                  serial_ports: { get_input: vm01_serial_ports }
+                  vm_advanced_parameters: { get_input: vm01_vm_advanced_parameters }
+                  cpu_hot_add: { get_input: cpu_hot_add }
+                  cpu_hot_remove: { get_input: cpu_hot_remove }
+                  memory_hot_add: { get_input: memory_hot_add }
+                  pci_turn_off_vm: { get_input: pci_turn_off_vm }
+                  cloudinit: { get_input: vm01_cloudinit }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: allowed_hosts_validator
+
+  vm_node_01:
+    type: nativeedge.nodes.K3S.VmInfo
+    properties:
+      vm_host: { get_attribute: ["vm_01", "capabilities", "vm_host"] }
+      vm_name: { get_attribute: ["vm_01", "capabilities", "vm_name"] }
+      vm_username: { get_attribute: ["vm_01", "capabilities", "vm_username"] }
+      vm_ssh_key_secret_name: { get_attribute: ["vm_01", "capabilities", "vm_ssh_key_secret_name"] }
+      vm_ssh_port: { get_attribute: ["vm_01", "capabilities", "vm_ssh_port"] }
+      vm_public_ip: { get_attribute: ["vm_01", "capabilities", "vm_public_ip"] }
+      vm_interface: { get_input: interface }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_01
+
+  vm_02:
+    type: nativeedge.nodes.ServiceComponent
+    properties:
+      resource_config:
+        blueprint:
+          external_resource: true
+          id: Virtual_Machine_with_cloud-init_for_vSphere_2.0.0
+        deployment:
+          id: ''
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        configure:
+          inputs:
+            timeout: 1800
+            resource_config:
+              blueprint: { get_property: ["SELF", "resource_config", "blueprint"] }
+              deployment:
+                display_name: { concat: [{get_sys: [deployment, name]}, "_node02"] }
+                inputs:
+                  vsphere_secret_name: { get_environment_capability: vcenter_credentials }
+                  template_name: { get_input: vm_template }
+                  hostname: { concat: [{get_input: hostname}, "-node02"] }
+                  vm_user_name: { get_input: vm_user_name }
+                  key_private_secret_name: { get_input: ssh_user_private_key_secret_name }
+                  key_public_secret_name: { get_input: ssh_user_public_key_secret_name }
+                  allowed_esxi_hosts: { get_attribute: ["allowed_hosts_validator", "ALLOWED_ESXI_HOST2"] }
+                  resource_pool_name: { get_input: resource_pool_name }
+                  vm_folder_name: { get_input: vm_folder }
+                  datastore_name: { get_input: vm02_datastore_name }
+                  vcpu: { get_input: vcpus }
+                  memory_size: { get_input: memory_size }
+                  os_disk_size: { get_input: os_disk_size }
+                  disk_provisioning: { get_input: disk_provisioning }
+                  storage_disk_size: { get_input: storage_disk_size }
+                  disks_count: { get_input: disks_count }
+                  storage_disk_provisioning: { get_input: storage_disk_provisioning }
+                  networking: { get_input: vm02_network_mappings }
+                  pci_devices: { get_input: vm02_pci_devices }
+                  usb_devices: { get_input: vm02_usb_devices }
+                  serial_ports: { get_input: vm02_serial_ports }
+                  vm_advanced_parameters: { get_input: vm02_vm_advanced_parameters }
+                  cpu_hot_add: { get_input: cpu_hot_add }
+                  cpu_hot_remove: { get_input: cpu_hot_remove }
+                  memory_hot_add: { get_input: memory_hot_add }
+                  pci_turn_off_vm: { get_input: pci_turn_off_vm }
+                  cloudinit: { get_input: vm02_cloudinit }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: allowed_hosts_validator
+
+  vm_node_02:
+    type: nativeedge.nodes.K3S.VmInfo
+    properties:
+      vm_host: { get_attribute: ["vm_02", "capabilities", "vm_host"] }
+      vm_name: { get_attribute: ["vm_02", "capabilities", "vm_name"] }
+      vm_username: { get_attribute: ["vm_02", "capabilities", "vm_username"] }
+      vm_ssh_key_secret_name: { get_attribute: ["vm_02", "capabilities", "vm_ssh_key_secret_name"] }
+      vm_ssh_port: { get_attribute: ["vm_02", "capabilities", "vm_ssh_port"] }
+      vm_public_ip: { get_attribute: ["vm_02", "capabilities", "vm_public_ip"] }
+      vm_interface: { get_input: interface }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_02
+
+  vm_03:
+    type: nativeedge.nodes.ServiceComponent
+    properties:
+      resource_config:
+        blueprint:
+          external_resource: true
+          id: Virtual_Machine_with_cloud-init_for_vSphere_2.0.0
+        deployment:
+          id: ''
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        configure:
+          inputs:
+            timeout: 1800
+            resource_config:
+              blueprint: { get_property: ["SELF", "resource_config", "blueprint"] }
+              deployment:
+                display_name: { concat: [{get_sys: [deployment, name]}, "_node03"] }
+                inputs:
+                  vsphere_secret_name: { get_environment_capability: vcenter_credentials }
+                  template_name: { get_input: vm_template }
+                  hostname: { concat: [{get_input: hostname}, "-node03"] }
+                  vm_user_name: { get_input: vm_user_name }
+                  key_private_secret_name: { get_input: ssh_user_private_key_secret_name }
+                  key_public_secret_name: { get_input: ssh_user_public_key_secret_name }
+                  allowed_esxi_hosts: { get_attribute: ["allowed_hosts_validator", "ALLOWED_ESXI_HOST3"] }
+                  resource_pool_name: { get_input: resource_pool_name }
+                  vm_folder_name: { get_input: vm_folder }
+                  datastore_name: { get_input: vm03_datastore_name }
+                  vcpu: { get_input: vcpus }
+                  memory_size: { get_input: memory_size }
+                  os_disk_size: { get_input: os_disk_size }
+                  disk_provisioning: { get_input: disk_provisioning }
+                  storage_disk_size: { get_input: storage_disk_size }
+                  disks_count: { get_input: disks_count }
+                  storage_disk_provisioning: { get_input: storage_disk_provisioning }
+                  networking: { get_input: vm03_network_mappings }
+                  pci_devices: { get_input: vm03_pci_devices }
+                  usb_devices: { get_input: vm03_usb_devices }
+                  serial_ports: { get_input: vm03_serial_ports }
+                  vm_advanced_parameters: { get_input: vm03_vm_advanced_parameters }
+                  cpu_hot_add: { get_input: cpu_hot_add }
+                  cpu_hot_remove: { get_input: cpu_hot_remove }
+                  memory_hot_add: { get_input: memory_hot_add }
+                  pci_turn_off_vm: { get_input: pci_turn_off_vm }
+                  cloudinit: { get_input: vm03_cloudinit }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: allowed_hosts_validator
+
+  vm_node_03:
+    type: nativeedge.nodes.K3S.VmInfo
+    properties:
+      vm_host: { get_attribute: ["vm_03", "capabilities", "vm_host"] }
+      vm_name: { get_attribute: ["vm_03", "capabilities", "vm_name"] }
+      vm_username: { get_attribute: ["vm_03", "capabilities", "vm_username"] }
+      vm_ssh_key_secret_name: { get_attribute: ["vm_03", "capabilities", "vm_ssh_key_secret_name"] }
+      vm_ssh_port: { get_attribute: ["vm_03", "capabilities", "vm_ssh_port"] }
+      vm_public_ip: { get_attribute: ["vm_03", "capabilities", "vm_public_ip"] }
+      vm_interface: { get_input: interface }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_03
+
+  vm_04:
+    type: nativeedge.nodes.ServiceComponent
+    properties:
+      resource_config:
+        blueprint:
+          external_resource: true
+          id: Virtual_Machine_with_cloud-init_for_vSphere_2.0.0
+        deployment:
+          id: ''
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        configure:
+          inputs:
+            timeout: 1800
+            resource_config:
+              blueprint: { get_property: ["SELF", "resource_config", "blueprint"] }
+              deployment:
+                display_name: { concat: [{get_sys: [deployment, name]}, "_node04"] }
+                inputs:
+                  vsphere_secret_name: { get_environment_capability: vcenter_credentials }
+                  template_name: { get_input: vm_template }
+                  hostname: { concat: [{get_input: hostname}, "-node04"] }
+                  vm_user_name: { get_input: vm_user_name }
+                  key_private_secret_name: { get_input: ssh_user_private_key_secret_name }
+                  key_public_secret_name: { get_input: ssh_user_public_key_secret_name }
+                  allowed_esxi_hosts: { get_attribute: ["allowed_hosts_validator", "ALLOWED_ESXI_HOST4"] }
+                  resource_pool_name: { get_input: resource_pool_name }
+                  vm_folder_name: { get_input: vm_folder }
+                  datastore_name: { get_input: vm04_datastore_name }
+                  vcpu: { get_input: vcpus }
+                  memory_size: { get_input: memory_size }
+                  os_disk_size: { get_input: os_disk_size }
+                  disk_provisioning: { get_input: disk_provisioning }
+                  storage_disk_size: { get_input: storage_disk_size }
+                  disks_count: { get_input: disks_count }
+                  storage_disk_provisioning: { get_input: storage_disk_provisioning }
+                  networking: { get_input: vm04_network_mappings }
+                  pci_devices: { get_input: vm04_pci_devices }
+                  usb_devices: { get_input: vm04_usb_devices }
+                  serial_ports: { get_input: vm04_serial_ports }
+                  vm_advanced_parameters: { get_input: vm04_vm_advanced_parameters }
+                  cpu_hot_add: { get_input: cpu_hot_add }
+                  cpu_hot_remove: { get_input: cpu_hot_remove }
+                  memory_hot_add: { get_input: memory_hot_add }
+                  pci_turn_off_vm: { get_input: pci_turn_off_vm }
+                  cloudinit: { get_input: vm04_cloudinit }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: allowed_hosts_validator
+
+  vm_node_04:
+    type: nativeedge.nodes.K3S.VmInfo
+    properties:
+      vm_host: { get_attribute: ["vm_04", "capabilities", "vm_host"] }
+      vm_name: { get_attribute: ["vm_04", "capabilities", "vm_name"] }
+      vm_username: { get_attribute: ["vm_04", "capabilities", "vm_username"] }
+      vm_ssh_key_secret_name: { get_attribute: ["vm_04", "capabilities", "vm_ssh_key_secret_name"] }
+      vm_ssh_port: { get_attribute: ["vm_04", "capabilities", "vm_ssh_port"] }
+      vm_public_ip: { get_attribute: ["vm_04", "capabilities", "vm_public_ip"] }
+      vm_interface: { get_input: interface }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_04
+
+  vm_05:
+    type: nativeedge.nodes.ServiceComponent
+    properties:
+      resource_config:
+        blueprint:
+          external_resource: true
+          id: Virtual_Machine_with_cloud-init_for_vSphere_2.0.0
+        deployment:
+          id: ''
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        configure:
+          inputs:
+            timeout: 1800
+            resource_config:
+              blueprint: { get_property: ["SELF", "resource_config", "blueprint"] }
+              deployment:
+                display_name: { concat: [{get_sys: [deployment, name]}, "_node05"] }
+                inputs:
+                  vsphere_secret_name: { get_environment_capability: vcenter_credentials }
+                  template_name: { get_input: vm_template }
+                  hostname: { concat: [{get_input: hostname}, "-node05"] }
+                  vm_user_name: { get_input: vm_user_name }
+                  key_private_secret_name: { get_input: ssh_user_private_key_secret_name }
+                  key_public_secret_name: { get_input: ssh_user_public_key_secret_name }
+                  allowed_esxi_hosts: { get_attribute: ["allowed_hosts_validator", "ALLOWED_ESXI_HOST4"] }
+                  resource_pool_name: { get_input: resource_pool_name }
+                  vm_folder_name: { get_input: vm_folder }
+                  datastore_name: { get_input: vm05_datastore_name }
+                  vcpu: { get_input: vcpus }
+                  memory_size: { get_input: memory_size }
+                  os_disk_size: { get_input: os_disk_size }
+                  disk_provisioning: { get_input: disk_provisioning }
+                  storage_disk_size: { get_input: storage_disk_size }
+                  disks_count: { get_input: disks_count }
+                  storage_disk_provisioning: { get_input: storage_disk_provisioning }
+                  networking: { get_input: vm05_network_mappings }
+                  pci_devices: { get_input: vm05_pci_devices }
+                  usb_devices: { get_input: vm05_usb_devices }
+                  serial_ports: { get_input: vm05_serial_ports }
+                  vm_advanced_parameters: { get_input: vm05_vm_advanced_parameters }
+                  cpu_hot_add: { get_input: cpu_hot_add }
+                  cpu_hot_remove: { get_input: cpu_hot_remove }
+                  memory_hot_add: { get_input: memory_hot_add }
+                  pci_turn_off_vm: { get_input: pci_turn_off_vm }
+                  cloudinit: { get_input: vm05_cloudinit }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: allowed_hosts_validator
+
+  vm_node_05:
+    type: nativeedge.nodes.K3S.VmInfo
+    properties:
+      vm_host: { get_attribute: ["vm_05", "capabilities", "vm_host"] }
+      vm_name: { get_attribute: ["vm_05", "capabilities", "vm_name"] }
+      vm_username: { get_attribute: ["vm_05", "capabilities", "vm_username"] }
+      vm_ssh_key_secret_name: { get_attribute: ["vm_05", "capabilities", "vm_ssh_key_secret_name"] }
+      vm_ssh_port: { get_attribute: ["vm_05", "capabilities", "vm_ssh_port"] }
+      vm_public_ip: { get_attribute: ["vm_05", "capabilities", "vm_public_ip"] }
+      vm_interface: { get_input: interface }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_05
+
+  allowed_hosts_validator:
+    type: nativeedge.nodes.AllowedHostsValidator
+    properties:
+      hosts:
+        - ALLOWED_ESXI_HOST1: { get_input: vm01_allowed_esxi_host }
+        - ALLOWED_ESXI_HOST2: { get_input: vm02_allowed_esxi_host }
+        - ALLOWED_ESXI_HOST3: { get_input: vm03_allowed_esxi_host }
+        - ALLOWED_ESXI_HOST4: { get_input: vm04_allowed_esxi_host }
+        - ALLOWED_ESXI_HOST5: { get_input: vm05_allowed_esxi_host }
+      verify_affinity: { get_input: verify_affinity }
+
+  check_vms_connectivity:
+    type: nativeedge.nodes.VerifyNetworkConnectivity
+    properties:
+      networks:
+        - { get_attribute: ["vm_node_01", "capabilities", "network"] }
+        - { get_attribute: ["vm_node_02", "capabilities", "network"] }
+        - { get_attribute: ["vm_node_03", "capabilities", "network"] }
+        - { get_attribute: ["vm_node_04", "capabilities", "network"] }
+        - { get_attribute: ["vm_node_05", "capabilities", "network"] }
+      netmasks:
+        - { get_attribute: ["vm_node_01", "capabilities", "netmask"] }
+        - { get_attribute: ["vm_node_02", "capabilities", "netmask"] }
+        - { get_attribute: ["vm_node_03", "capabilities", "netmask"] }
+        - { get_attribute: ["vm_node_04", "capabilities", "netmask"] }
+        - { get_attribute: ["vm_node_05", "capabilities", "netmask"] }
+      default_routes:
+        - { get_attribute: ["vm_node_01", "capabilities", "default_route"] }
+        - { get_attribute: ["vm_node_02", "capabilities", "default_route"] }
+        - { get_attribute: ["vm_node_03", "capabilities", "default_route"] }
+        - { get_attribute: ["vm_node_04", "capabilities", "default_route"] }
+        - { get_attribute: ["vm_node_05", "capabilities", "default_route"] }
+      kube_vip: { get_input: vip_address }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_node_01
+      - type: nativeedge.relationships.depends_on
+        target: vm_node_02
+      - type: nativeedge.relationships.depends_on
+        target: vm_node_03
+      - type: nativeedge.relationships.depends_on
+        target: vm_node_04
+      - type: nativeedge.relationships.depends_on
+        target: vm_node_05
+
+  install_nvidia_drivers_01:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        precreate:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/download_files.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_01", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_01", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                CURL_CONFIG: { concat: [\\\"\\\, {get_secret: {get_input: artifact_download_config_secret_name}}, \\\"\\\] }
+                DRIVER_PACKAGES_URL: { get_input: driver_packages_url }
+                BUILD_ESSENTIAL_PACKAGES_URL: { get_input: build_essential_packages_url }
+                DRIVER_INSTALL_SCRIPT: { get_input: driver_install_script }
+                GPU: { get_input: vm01_pci_devices }
+                ENVIRONMENT_TYPE: { get_input: environment_type }
+                PACKAGES: { get_input: packages_list }
+        create:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/installation.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_01", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_01", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                PACKAGE_PATH: { get_attribute: ["SELF", "packages_folder"] }
+                PACKAGES: { get_input: packages_list }
+                GPU: { get_input: vm01_pci_devices }
+        start:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/installation.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_01", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_01", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                SCRIPT_EXECUTION: 'true'
+                SCRIPT_FILE: { get_attribute: ["SELF", "installation_script"] }
+                SCRIPT_PARAMS: { get_input: driver_install_params }
+                GPU: { get_input: vm01_pci_devices }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: check_vms_connectivity
+
+  install_nvidia_drivers_02:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        precreate:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/download_files.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_02", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_02", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                CURL_CONFIG: { concat: [\\\"\\\, {get_secret: {get_input: artifact_download_config_secret_name}}, \\\"\\\] }
+                DRIVER_PACKAGES_URL: { get_input: driver_packages_url }
+                BUILD_ESSENTIAL_PACKAGES_URL: { get_input: build_essential_packages_url }
+                DRIVER_INSTALL_SCRIPT: { get_input: driver_install_script }
+                GPU: { get_input: vm02_pci_devices }
+                ENVIRONMENT_TYPE: { get_input: environment_type }
+                PACKAGES: { get_input: packages_list }
+        create:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/installation.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_02", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_02", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                PACKAGE_PATH: { get_attribute: ["SELF", "packages_folder"] }
+                PACKAGES: { get_input: packages_list }
+                GPU: { get_input: vm02_pci_devices }
+        start:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/installation.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_02", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_02", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                SCRIPT_EXECUTION: 'true'
+                SCRIPT_FILE: { get_attribute: ["SELF", "installation_script"] }
+                SCRIPT_PARAMS: { get_input: driver_install_params }
+                GPU: { get_input: vm02_pci_devices }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: check_vms_connectivity
+
+  install_nvidia_drivers_03:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        precreate:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/download_files.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_03", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_03", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                CURL_CONFIG: { concat: [\\\"\\\, {get_secret: {get_input: artifact_download_config_secret_name}}, \\\"\\\] }
+                DRIVER_PACKAGES_URL: { get_input: driver_packages_url }
+                BUILD_ESSENTIAL_PACKAGES_URL: { get_input: build_essential_packages_url }
+                DRIVER_INSTALL_SCRIPT: { get_input: driver_install_script }
+                GPU: { get_input: vm03_pci_devices }
+                ENVIRONMENT_TYPE: { get_input: environment_type }
+                PACKAGES: { get_input: packages_list }
+        create:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/installation.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_03", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_03", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                PACKAGE_PATH: { get_attribute: ["SELF", "packages_folder"] }
+                PACKAGES: { get_input: packages_list }
+                GPU: { get_input: vm03_pci_devices }
+        start:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/installation.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_03", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_03", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                SCRIPT_EXECUTION: 'true'
+                SCRIPT_FILE: { get_attribute: ["SELF", "installation_script"] }
+                SCRIPT_PARAMS: { get_input: driver_install_params }
+                GPU: { get_input: vm03_pci_devices }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: check_vms_connectivity
+
+  install_nvidia_drivers_04:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        precreate:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/download_files.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_04", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_04", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                CURL_CONFIG: { concat: [\\\"\\\, {get_secret: {get_input: artifact_download_config_secret_name}}, \\\"\\\] }
+                DRIVER_PACKAGES_URL: { get_input: driver_packages_url }
+                BUILD_ESSENTIAL_PACKAGES_URL: { get_input: build_essential_packages_url }
+                DRIVER_INSTALL_SCRIPT: { get_input: driver_install_script }
+                GPU: { get_input: vm04_pci_devices }
+                ENVIRONMENT_TYPE: { get_input: environment_type }
+                PACKAGES: { get_input: packages_list }
+        create:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/installation.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_04", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_04", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                PACKAGE_PATH: { get_attribute: ["SELF", "packages_folder"] }
+                PACKAGES: { get_input: packages_list }
+                GPU: { get_input: vm04_pci_devices }
+        start:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/installation.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_04", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_04", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                SCRIPT_EXECUTION: 'true'
+                SCRIPT_FILE: { get_attribute: ["SELF", "installation_script"] }
+                SCRIPT_PARAMS: { get_input: driver_install_params }
+                GPU: { get_input: vm04_pci_devices }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: check_vms_connectivity
+
+  install_nvidia_drivers_05:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        precreate:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/download_files.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_05", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_05", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                CURL_CONFIG: { concat: [\\\"\\\, {get_secret: {get_input: artifact_download_config_secret_name}}, \\\"\\\] }
+                DRIVER_PACKAGES_URL: { get_input: driver_packages_url }
+                BUILD_ESSENTIAL_PACKAGES_URL: { get_input: build_essential_packages_url }
+                DRIVER_INSTALL_SCRIPT: { get_input: driver_install_script }
+                GPU: { get_input: vm05_pci_devices }
+                ENVIRONMENT_TYPE: { get_input: environment_type }
+                PACKAGES: { get_input: packages_list }
+        create:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/installation.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_05", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_05", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                PACKAGE_PATH: { get_attribute: ["SELF", "packages_folder"] }
+                PACKAGES: { get_input: packages_list }
+                GPU: { get_input: vm05_pci_devices }
+        start:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/installation.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_05", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_05", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                SCRIPT_EXECUTION: 'true'
+                SCRIPT_FILE: { get_attribute: ["SELF", "installation_script"] }
+                SCRIPT_PARAMS: { get_input: driver_install_params }
+                GPU: { get_input: vm05_pci_devices }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: check_vms_connectivity
+
+  k3s_install:
+    type: nativeedge.nodes.ServiceComponent
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start:
+          timeout: 3600
+    properties:
+      resource_config:
+        blueprint:
+          external_resource: true
+          id: K3S_5-node_2.0.0
+        deployment:
+          inputs:
+            node1_ip: { get_attribute: ["vm_node_01", "capabilities", "vm_host"] }
+            node1_public_ip: { get_attribute: ["vm_node_01", "capabilities", "vm_public_ip"] }
+            node1_username: { get_input: vm_user_name }
+            node1_ssh_key_private: { get_input: ssh_user_private_key_secret_name }
+            node1_port: { get_attribute: ["vm_node_01", "capabilities", "vm_ssh_port"] }
+            node2_ip: { get_attribute: ["vm_node_02", "capabilities", "vm_host"] }
+            node2_public_ip: { get_attribute: ["vm_node_02", "capabilities", "vm_public_ip"] }
+            node2_username: { get_input: vm_user_name }
+            node2_ssh_key_private: { get_input: ssh_user_private_key_secret_name }
+            node2_port: { get_attribute: ["vm_node_02", "capabilities", "vm_ssh_port"] }
+            node3_ip: { get_attribute: ["vm_node_03", "capabilities", "vm_host"] }
+            node3_public_ip: { get_attribute: ["vm_node_03", "capabilities", "vm_public_ip"] }
+            node3_username: { get_input: vm_user_name }
+            node3_ssh_key_private: { get_input: ssh_user_private_key_secret_name }
+            node3_port: { get_attribute: ["vm_node_03", "capabilities", "vm_ssh_port"] }
+            node4_ip: { get_attribute: ["vm_node_04", "capabilities", "vm_host"] }
+            node4_public_ip: { get_attribute: ["vm_node_04", "capabilities", "vm_public_ip"] }
+            node4_port: { get_attribute: ["vm_node_04", "capabilities", "vm_ssh_port"] }
+            node4_username: { get_input: vm_user_name }
+            node4_ssh_key_private: { get_input: ssh_user_private_key_secret_name }
+            node5_ip: { get_attribute: ["vm_node_05", "capabilities", "vm_host"] }
+            node5_public_ip: { get_attribute: ["vm_node_05", "capabilities", "vm_public_ip"] }
+            node5_port: { get_attribute: ["vm_node_05", "capabilities", "vm_ssh_port"] }
+            node5_username: { get_input: vm_user_name }
+            node5_ssh_key_private: { get_input: ssh_user_private_key_secret_name }
+            interface: { get_input: interface }
+            vip_address: { get_input: vip_address }
+            vip_dhcp: { get_input: vip_dhcp }
+            k3s_version: { get_input: k3s_version }
+            disable_local_storage: { get_input: disable_local_storage }
+            taint_controlplane: { get_input: taint_controlplane }
+            install_longhorn: true
+            longhorn_replicas_number: 5
+            enable_nfs_storage: { get_input: enable_nfs_storage }
+            nfs_server: { get_input: nfs_server }
+            nfs_path: { get_input: nfs_path }
+            nfs_sc_name: nfs
+            k3s_bin: { get_input: k3s_bin }
+            k3s_images_tar_archive: { get_input: k3s_images_tar_archive }
+            longhorn_images_tar_archive: { get_input: longhorn_images_tar_archive }
+            kube_vip_image_tar_archive: { get_input: kube_vip_image_tar_archive }
+            nginx_image_tar_archive: { get_input: nginx_image_tar_archive }
+            helm_tar_archive: { get_input: helm_tar_archive }
+            nfs_subdir_external_provisioner_tar_archive: { get_input: nfs_subdir_external_provisioner_tar_archive }
+            nfs_common_packages_tar_archive: { get_input: nfs_common_packages_tar_archive }
+            environment_type: { get_input: environment_type }
+            artifact_download_config_secret_name: { get_input: artifact_download_config_secret_name }
+            install_nvidia_device_plugin: { get_input: install_nvidia_device_plugin }
+            nvidia_image_tar_archive: { get_input: nvidia_image_tar_archive }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: check_vms_connectivity
+      - type: nativeedge.relationships.depends_on
+        target: install_nvidia_drivers_01
+      - type: nativeedge.relationships.depends_on
+        target: install_nvidia_drivers_02
+      - type: nativeedge.relationships.depends_on
+        target: install_nvidia_drivers_03
+      - type: nativeedge.relationships.depends_on
+        target: install_nvidia_drivers_04
+      - type: nativeedge.relationships.depends_on
+        target: install_nvidia_drivers_05
+
+dsl_definitions:
+
+  driver_packages_tar: drivers.tar.gz
+
+  build_essential_packages_tar: build_essential_packages.tar.gz
+
+  k3s_bin: k3s
+
+  k3s_images_tar_archive: k3s-airgap-images-amd64.tar
+
+  longhorn_images_tar_archive: longhorn_images.tar.gz
+
+  helm_tar_archive: helm-v3.12.1-linux-amd64.tar.gz
+
+  nfs_subdir_external_provisioner_tar_archive: nfs-subdir-external-provisioner.tar
+
+  nfs_common_packages_tar_archive: nfs_common_packages.tar.gz
+
+  nvidia_image_tar_archive: nvidia_device_plugin.tar.gz
+
+  kube_vip_image_tar_archive: kube_vip.tar
+
+  nginx_image_tar_archive: nginx.tar
+capabilities:
+
+  cluster_endpoint:
+    description: The endpoint of K3S cluster
+    value: { get_attribute: ["k3s_install", "capabilities", "cluster_endpoint"] }
+
+  longhorn:
+    description: Longhorn endpoint
+    value: { get_attribute: ["k3s_install", "capabilities", "longhorn"] }
+
+  short_term_sc:
+    description: Short-term storage class name (local storage)
+    value: { get_attribute: ["k3s_install", "capabilities", "short_term_sc"] }
+
+  longhorn_long_term_sc:
+    description: Longhorn long-term storage class name (1 replica)
+    value: { get_attribute: ["k3s_install", "capabilities", "longhorn_long_term_sc"] }
+
+  nfs_long_term_sc:
+    description: Longhorn long-term storage class name (1 replica)
+    value: { get_attribute: ["k3s_install", "capabilities", "nfs_long_term_sc"] }
+
+  cluster_k3s_token:
+    description: Secret with token used for adding controlplane and worker nodes to cluster
+    value: { get_attribute: ["k3s_install", "capabilities", "cluster_k3s_token"] }
+
+  kubeconfig_secret_name:
+    description: Secret with kubeconfig file of the newly created cluster
+    value: { get_attribute: ["k3s_install", "capabilities", "kubeconfig_secret_name"] }
+
+  kubernetes_credentials:
+    description: Secret with kubernetes credentials of the newly created cluster
+    value: { get_attribute: ["k3s_install", "capabilities", "kubernetes_credentials"] }
+
+  node01_ip:
+    description: IP of k3s_server_01
+    value: { get_attribute: ["vm_node_01", "capabilities", "vm_public_ip"] }
+
+  node01_username:
+    description: Username of k3s_server_01
+    value: { get_input: vm_user_name }
+
+  node01_ssh_key_private:
+    description: SSH private key for k3s_server_01
+    value: { get_input: ssh_user_private_key_secret_name }
+
+  node02_ip:
+    description: IP of k3s_server_02
+    value: { get_attribute: ["vm_node_02", "capabilities", "vm_public_ip"] }
+
+  node02_username:
+    description: Username of k3s_server_02
+    value: { get_input: vm_user_name }
+
+  node02_ssh_key_private:
+    description: SSH key secret name of k3s_server_02
+    value: { get_input: ssh_user_private_key_secret_name }
+
+  node03_ip:
+    description: IP of k3s_server_03
+    value: { get_attribute: ["vm_node_03", "capabilities", "vm_public_ip"] }
+
+  node03_username:
+    description: Username of k3s_server_03
+    value: { get_input: vm_user_name }
+
+  node03_ssh_key_private:
+    description: SSH key secret name of k3s_server_03
+    value: { get_input: ssh_user_private_key_secret_name }
+
+  node04_ip:
+    description: IP of k3s_server_04
+    value: { get_attribute: ["vm_node_04", "capabilities", "vm_public_ip"] }
+
+  node04_username:
+    description: Username of k3s_server_04
+    value: { get_input: vm_user_name }
+
+  node04_ssh_key_private:
+    description: SSH key secret name of k3s_server_04
+    value: { get_input: ssh_user_private_key_secret_name }
+
+  node05_ip:
+    description: IP of k3s_server_05
+    value: { get_attribute: ["vm_node_05", "capabilities", "vm_public_ip"] }
+
+  node05_username:
+    description: Username of k3s_server_05
+    value: { get_input: vm_user_name }
+
+  node05_ssh_key_private:
+    description: SSH key secret name of k3s_server_05
+    value: { get_input: ssh_user_private_key_secret_name }
+

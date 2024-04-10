@@ -1,0 +1,2295 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  The blueprint creates VMs on 5 ECEs (5 servers with workload) And runs the k3s HA installation on the top of it.
+
+imports:
+  - nativeedge/types/types.yaml
+  - infrastructure/ned_vm/inputs_common.yaml
+  - infrastructure/ned_vm/single_node_inputs.yaml
+  - infrastructure/ned_vm/single_node_inputs_common.yaml
+  - infrastructure/ned_vm/three_nodes_inputs.yaml
+  - infrastructure/ned_vm/three_nodes_inputs_common.yaml
+  - infrastructure/ned_vm/five_nodes_inputs.yaml
+  - infrastructure/ned_vm/five_nodes_inputs_common.yaml
+  - infrastructure/ned_vm/binary_five_nodes_definitions.yaml
+  - infrastructure/ned_vm/single_node_definitions.yaml
+  - infrastructure/ned_vm/three_nodes_definitions.yaml
+  - infrastructure/ned_vm/five_nodes_definitions.yaml
+  - nvidia_drivers/inputs.yaml
+  - nvidia_drivers/three_nodes_definitions.yaml
+  - nvidia_drivers/five_nodes_definitions.yaml
+  - application/inputs.yaml
+  - application/inputs_common.yaml
+  - application/common_ha_inputs.yaml
+  - application/five_nodes_definitions.yaml
+  - outputs/single_node_outputs.yaml
+  - outputs/ned_single_node_outputs.yaml
+  - outputs/three_nodes_outputs.yaml
+  - outputs/ned_three_nodes_outputs.yaml
+  - outputs/five_nodes_outputs.yaml
+  - outputs/ned_five_nodes_outputs.yaml
+  - plugin:nativeedge-plugin
+  - plugin:nativeedge-utilities-plugin
+  - plugin:nativeedge-fabric-plugin
+labels:
+
+  csys-obj-type:
+    values:
+      - environment
+
+  target_environment:
+    values:
+      - ece
+
+  vendor:
+    values:
+      - cncf
+
+  solution:
+    values:
+      - k8s
+      - k3s
+
+  version:
+    values:
+      - 1.26.5+k3s1
+blueprint_labels:
+
+  env:
+    values:
+      - NED
+
+inputs:
+
+  artifact_configuration_secret_name:
+    type: secret_key
+    hidden: false
+    allow_update: false
+    display_label: Artifact Configuration Secret Name
+    description: >
+      Secret name containing details needed for binary image and
+
+      artifacts download.
+
+  binary_image_artifact_url:
+    type: string
+    hidden: true
+    display_label: Virtual Machine Image Repository URL
+    description: >
+      URL of the Image Binary that will be used to create
+
+      the Virtual Machine.
+    default: { get_secret: [{get_input: artifact_configuration_secret_name}, "binary_image_url"] }
+
+  binary_image_version:
+    type: string
+    hidden: true
+    display_label: Virtual Machine Image Version
+    description: >
+      Virtual Machine Image Version that will be used to create
+
+      the Virtual Machine.
+    default: { get_secret: [{get_input: artifact_configuration_secret_name}, "binary_image_version"] }
+
+  binary_image_artifact_username:
+    type: string
+    hidden: true
+    display_label: Virtual Machine Image Repository User Name
+    description: >
+      User name of the Repository of the Image Binary that will be
+
+      used to create the Virtual Machine.
+    default: { get_secret: [{get_input: artifact_configuration_secret_name}, "binary_image_access_user"] }
+
+  binary_image_artifact_access_token_secret_name:
+    type: list
+    hidden: true
+    display_label: Virtual Machine Image Repository Token Secret Name
+    description: >
+      Name of the secret storing the Token to the Repository of the
+
+      Image Binary that will be used to create the Virtual Machine.
+    default:
+      - { get_input: artifact_configuration_secret_name }
+      - binary_image_access_token
+
+  vm_user_name:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Deployment User
+    description: >
+      Name of the deployment user on the Virtual Machine.
+
+      Cannot contain leading or trailing spaces.
+    default: ubuntu
+    constraints:
+      - pattern: ^(?!\s)(?!.*\s$).*$
+        error_message: Cannot contain leading or trailing spaces.
+
+  ssh_user_private_key_secret_name:
+    type: secret_key
+    hidden: false
+    allow_update: false
+    display_label: SSH Private Key Secret Name
+    description: >
+      Name of the secret storing the SSH private key for the Virtual Machine.
+
+  ssh_user_public_key_secret_name:
+    type: secret_key
+    hidden: false
+    allow_update: false
+    display_label: SSH Public Key Secret Name
+    description: >
+      Name of the secret storing the SSH private key for the Virtual Machine.
+
+  hostname:
+    type: string
+    hidden: true
+    allow_update: false
+    display_label: Hostname
+    description: >
+      Hostname of the Virtual Machine
+
+      (an auto-generated suffix will also be added).
+
+      Cannot contain characters other than:
+
+      letters (a-z, A-Z), numbers (0-9), or hyphens (-).
+
+      Can be up to 63 characters long.
+    default: k3s
+
+  os_type:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: OS Type
+    description: The virtual machine Operating System.
+    default: UBUNTU22.04
+    constraints:
+      - valid_values:
+          - WIN10-32B
+          - WIN10-64B
+          - WIN11
+          - WIN2022-SERVER
+          - WIN2019-SERVER
+          - WIN-OTHERS
+          - UBUNTU16.04-32B
+          - UBUNTU16.04-64B
+          - UBUNTU18.04
+          - UBUNTU20.04
+          - UBUNTU20.10
+          - UBUNTU21.04
+          - UBUNTU21.10
+          - UBUNTU22.04
+          - UBUNTU22.10
+          - UBUNTU23.04
+          - CENTOS9
+          - CENTOS8
+          - DEB-LINUX12-32B
+          - DEB-LINUX12-64B
+          - DEB-LINUX11-32B
+          - DEB-LINUX11-64B
+          - DEB-LINUX10-32B
+          - DEB-LINUX10-64B
+          - FREEBSD13-32B
+          - FREEBSD13-64B
+          - FREEBSD12-32B
+          - FREEBSD12-64B
+          - FREEBSD11-32B
+          - FREEBSD11-64B
+          - ORCL-LINUX9
+          - ORCL-LINUX8
+          - RHEL9
+          - RHEL8
+          - SUSE-SLES15
+          - SUSE-SLED15
+          - SUSE-SLES12
+          - SUSE-SLED12
+          - LINUX-OTHERS
+          - OTHERS
+
+  vcpus:
+    type: integer
+    hidden: false
+    display_label: vCPUs
+    description: >
+      Number of virtual CPUs allocated to the Virtual Machine.
+
+      See more about sizing recommendations:
+
+      https://docs.k3s.io/installation/requirements
+    default: 2
+    constraints:
+      - greater_or_equal: 2
+
+  memory_size:
+    type: string
+    hidden: false
+    display_label: Memory Size
+    description: >
+      Memory size with unit [KB,MB,GB,TB,PB,EB,ZB,YB].
+
+      See more about sizing recommendations:
+
+      https://docs.k3s.io/installation/requirements
+    default: 4GB
+    constraints:
+      - pattern: \d+(\.\d+)?(KB|MB|GB|TB|PB|EB|ZB|YB)
+        error_message: >
+          Incorrect format.
+
+          Memory size must be followed by unit [KB,MB,GB,TB,PB,EB,ZB,YB].
+
+          Example: 4GB
+
+  os_disk_size:
+    type: string
+    hidden: false
+    display_label: OS Disk Size
+    description: >
+      Storage size with unit [KB,MB,GB,TB,PB,EB,ZB,YB].
+
+      See more about sizing recommendations:
+
+      https://docs.k3s.io/installation/requirements
+    default: 100GB
+    constraints:
+      - pattern: \d+(\.\d+)?(KB|MB|GB|TB|PB|EB|ZB|YB)
+        error_message: >
+          Incorrect format.
+
+          Disk size must be followed by unit [KB,MB,GB,TB,PB,EB,ZB,YB].
+
+          Example: 50GB
+
+  hardware_options.vTPM:
+    type: boolean
+    hidden: true
+    allow_update: false
+    display_label: Hardware Options - vTPM
+    description: >
+      Enable vTPM.
+
+      Required for For Windows 11 OS, optional for other OS.
+    default: false
+
+  hardware_options.secure_boot:
+    type: boolean
+    hidden: true
+    allow_update: false
+    display_label: Hardware Options - Secure Boot
+    description: >
+      Enable secure boot.
+
+      Required for For Windows 11 OS, optional for other OS.
+    default: false
+
+  hardware_options.firmware_type:
+    type: string
+    hidden: true
+    allow_update: false
+    display_label: Hardware Options - Firmware Type
+    description: >
+      The firmware type configured in the Virtual Machine.
+
+      For Windows 11 OS this must be UEFI.
+    default: BIOS
+    constraints:
+      - valid_values:
+          - BIOS
+          - UEFI
+
+  enable_management:
+    type: boolean
+    hidden: true
+    allow_update: false
+    display_label: Enable Management
+    description: >
+      Enable management which will create a tap interface for
+
+      the infrastructure segment.
+    default: true
+
+  network_settings:
+    type: list
+    hidden: true
+    display_label: Network Settings
+    description: List of VMDeployNetworkSettings.
+    default:
+      - name: VNIC1
+        segment_name: { get_input: segment_name }
+
+  usb:
+    type: list
+    hidden: true
+    allow_update: false
+    display_label: USB Devices List
+    description: >
+      A list of USB logical names to pass through to the Virtual Machine.
+
+      Valid values are "USB-1" to "USB-10"
+
+      Please make sure to select the USB port where USB device is connected.
+    required: false
+    default: []
+    item_type: string
+    constraints:
+      - valid_values:
+          - USB-1
+          - USB-2
+          - USB-3
+          - USB-4
+          - USB-5
+          - USB-6
+          - USB-7
+          - USB-8
+          - USB-9
+          - USB-10
+
+  serial_port:
+    type: list
+    hidden: true
+    allow_update: false
+    display_label: Serial Port
+    description: >
+      Serial port passthrough.
+
+      Please make sure to select the port where required device is connected.
+    required: false
+    default: []
+    item_type: dict
+    constraints:
+      - valid_values:
+          - port: COM-1
+          - port: COM-2
+          - port: COM-3
+          - port: COM-4
+          - port: COM-5
+          - port: COM-6
+          - port: COM-7
+          - port: COM-8
+          - port: COM-9
+          - port: COM-10
+
+  video:
+    type: list
+    hidden: true
+    allow_update: false
+    display_label: Video Passthrough
+    description: >
+      Video passthrough. A list of Video logical names (string).
+
+      E.g. 'Onboard Controller'
+    required: false
+    default: []
+
+  cloudinit:
+    type: dict
+    hidden: true
+    display_label: Cloud Init Config
+    description: >
+      Cloud init cloud config, can be obtained with
+
+      nativeedge.nodes.CloudInit.CloudConfig
+    required: false
+    default: {}
+
+  iso_files:
+    type: list
+    hidden: true
+    display_label: ISO Files
+    description: >
+      List ISO files (references to catalog) to be downloaded before
+
+      VM provisioning.
+    default: []
+    required: false
+
+  dhcp:
+    type: boolean
+    hidden: false
+    allow_update: false
+    display_label: DHCP
+    description: >
+      Enable to allow IP configuration to be taken from DHCP
+
+      instead of static IP settings.
+    default: true
+
+  dns:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: DNS Servers
+    description: List of DNS servers addresses.
+    required: false
+
+  gateway:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Gateway IP Address
+    description: IP Address of the Network Gateway.
+    required: false
+    constraints:
+      - pattern: ^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$|^$
+        error_message: >
+          Invalid format for IP Address.
+
+          Example: 172.16.0.1
+
+  segment_name:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Bridged Network Name
+    description: Name of the Bridged Network.
+    constraints:
+      - pattern: ^[a-zA-Z0-9_.-]+$
+        error_message: >
+          Must be letters (a-z, A-Z), numbers (0-9), underscores (_),
+
+          dots (.), or hyphens (-).
+
+  proxy_port_01:
+    type: string
+    display_label: 'Endpoint #1 Proxy Port'
+    description: Port on which the proxy should be created
+    default: 22
+    hidden: true
+
+  vm01_static_ip:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: VM 01 - Static IP and Mask Suffix
+    description: >
+      IP address and suffix. Example: 172.16.0.1/16.
+
+      Only required for static IP deployments, not for DHCP.
+    required: false
+    constraints:
+      - pattern: ^((25[0-5]|2[0-4]\d|1\d\d|\d{1,2})(\.(\d{1,3})){3}(\/(3[0-2]|[12]?\d))?|)$
+        error_message: >
+          Invalid format for IP Address in CIDR format.
+
+          Example: 172.16.0.1/16
+
+  vm01_disk:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: VM 01 - Endpoint Datastore Path
+    description: >
+      Deployment datastore path on target endpoint.
+
+      Available datastores can be retrieved from the endpoint screen.
+    default: /DataStore0
+    constraints:
+      - pattern: ^\/[a-zA-Z0-9]+$
+        error_message: >
+          Must start with slash (/), followed by alphanumeric characters.
+
+          Example: /DataStore0
+
+  vm01_gpu_passthrough:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: VM 01 - GPU Passthrough
+    description: >
+      A list of GPU logical names.
+
+      Please make sure to select the GPU that is currently available in your
+
+      Endpoint. A list of GPU logical names available for your endpoint can
+
+      be found in the NativeEdge UI under Endpoints / Hardware / Peripherals
+    required: false
+    default: []
+    item_type: string
+    constraints:
+      - valid_values:
+          - NVIDIA A2
+          - NVIDIA A10
+          - NVIDIA A30
+          - NVIDIA A40
+          - NVIDIA A100
+          - NVIDIA L4
+          - NVIDIA L40
+
+  ece_01_deployment_id:
+    type: deployment_id
+    allow_update: false
+    display_label: 'Endpoint #1 Service Tag'
+    description: >
+      Service Tag of the endpoint where the Virtual Machine
+
+      will be created.
+    constraints:
+      - labels:
+          - cloud: edge-cloud
+
+  ece_02_deployment_id:
+    type: deployment_id
+    allow_update: false
+    display_label: 'Endpoint #2 Service Tag'
+    description: >
+      Service Tag of the endpoint where the Virtual Machine
+
+      will be created.
+    constraints:
+      - labels:
+          - cloud: edge-cloud
+
+  proxy_port_02:
+    type: string
+    display_label: 'Endpoint #2 Proxy Port'
+    description: Port on which the proxy should be created
+    default: 22
+    hidden: true
+
+  ece_03_deployment_id:
+    type: deployment_id
+    allow_update: false
+    display_label: 'Endpoint #3 Service Tag'
+    description: >
+      Service Tag of the endpoint where the Virtual Machine
+
+      will be created.
+    constraints:
+      - labels:
+          - cloud: edge-cloud
+
+  proxy_port_03:
+    type: string
+    display_label: 'Endpoint #3 Proxy Port'
+    description: Port on which the proxy should be created
+    default: 22
+    hidden: true
+
+  verify_tags:
+    type: boolean
+    display_label: Verify tags
+    description: Verify if service tags of ECE are unique
+    hidden: false
+    allow_update: false
+    default: true
+
+  vm02_static_ip:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: VM 02 - Static IP and Mask Suffix
+    description: >
+      IP address and suffix. Example: 172.16.0.1/16.
+
+      Only required for static IP deployments, not for DHCP.
+    required: false
+    constraints:
+      - pattern: ^((25[0-5]|2[0-4]\d|1\d\d|\d{1,2})(\.(\d{1,3})){3}(\/(3[0-2]|[12]?\d))?|)$
+        error_message: >
+          Invalid format for IP Address in CIDR format.
+
+          Example: 172.16.0.1/16
+
+  vm02_disk:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: VM 02 - Endpoint Datastore Path
+    description: >
+      Deployment datastore path on target endpoint.
+
+      Available datastores can be retrieved from the endpoint screen.
+    default: /DataStore0
+    constraints:
+      - pattern: ^\/[a-zA-Z0-9]+$
+        error_message: >
+          Must start with slash (/), followed by alphanumeric characters.
+
+          Example: /DataStore0
+
+  vm02_gpu_passthrough:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: VM 02 - GPU Passthrough
+    description: >
+      A list of GPU logical names.
+
+      Please make sure to select the GPU that is currently available in your
+
+      Endpoint. A list of GPU logical names available for your endpoint can
+
+      be found in the NativeEdge UI under Endpoints / Hardware / Peripherals
+    required: false
+    default: []
+    item_type: string
+    constraints:
+      - valid_values:
+          - NVIDIA A2
+          - NVIDIA A10
+          - NVIDIA A30
+          - NVIDIA A40
+          - NVIDIA A100
+          - NVIDIA L4
+          - NVIDIA L40
+
+  vm03_static_ip:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: VM 03 - Static IP and Mask Suffix
+    description: >
+      IP address and suffix. Example: 172.16.0.1/16.
+
+      Only required for static IP deployments, not for DHCP.
+    required: false
+    constraints:
+      - pattern: ^((25[0-5]|2[0-4]\d|1\d\d|\d{1,2})(\.(\d{1,3})){3}(\/(3[0-2]|[12]?\d))?|)$
+        error_message: >
+          Invalid format for IP Address in CIDR format.
+
+          Example: 172.16.0.1/16
+
+  vm03_disk:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: VM 03 - Endpoint Datastore Path
+    description: >
+      Deployment datastore path on target endpoint.
+
+      Available datastores can be retrieved from the endpoint screen.
+    default: /DataStore0
+    constraints:
+      - pattern: ^\/[a-zA-Z0-9]+$
+        error_message: >
+          Must start with slash (/), followed by alphanumeric characters.
+
+          Example: /DataStore0
+
+  vm03_gpu_passthrough:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: VM 03 - GPU Passthrough
+    description: >
+      A list of GPU logical names.
+
+      Please make sure to select the GPU that is currently available in your
+
+      Endpoint. A list of GPU logical names available for your endpoint can
+
+      be found in the NativeEdge UI under Endpoints / Hardware / Peripherals
+    required: false
+    default: []
+    item_type: string
+    constraints:
+      - valid_values:
+          - NVIDIA A2
+          - NVIDIA A10
+          - NVIDIA A30
+          - NVIDIA A40
+          - NVIDIA A100
+          - NVIDIA L4
+          - NVIDIA L40
+
+  ece_04_deployment_id:
+    type: deployment_id
+    allow_update: false
+    display_label: 'Endpoint #4 Service Tag'
+    description: >
+      Service Tag of the endpoint where the Virtual Machine
+
+      will be created.
+    constraints:
+      - labels:
+          - cloud: edge-cloud
+
+  proxy_port_04:
+    type: string
+    display_label: 'Endpoint #4 Proxy Port'
+    description: Port on which the proxy should be created
+    default: 22
+    hidden: true
+
+  ece_05_deployment_id:
+    type: deployment_id
+    allow_update: false
+    display_label: 'Endpoint #5 Service Tag'
+    description: >
+      Service Tag of the endpoint where the Virtual Machine
+
+      will be created.
+    constraints:
+      - labels:
+          - cloud: edge-cloud
+
+  proxy_port_05:
+    type: string
+    display_label: 'Endpoint #5 Proxy Port'
+    description: Port on which the proxy should be created
+    default: 22
+    hidden: true
+
+  vm04_static_ip:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: VM 04 - Static IP and Mask Suffix
+    description: >
+      IP address and suffix. Example: 172.16.0.1/16.
+
+      Only required for static IP deployments, not for DHCP.
+    required: false
+    constraints:
+      - pattern: ^((25[0-5]|2[0-4]\d|1\d\d|\d{1,2})(\.(\d{1,3})){3}(\/(3[0-2]|[12]?\d))?|)$
+        error_message: >
+          Invalid format for IP Address in CIDR format.
+
+          Example: 172.16.0.1/16
+
+  vm04_disk:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: VM 04 - Endpoint Datastore Path
+    description: >
+      Deployment datastore path on target endpoint.
+
+      Available datastores can be retrieved from the endpoint screen.
+    default: /DataStore0
+    constraints:
+      - pattern: ^\/[a-zA-Z0-9]+$
+        error_message: >
+          Must start with slash (/), followed by alphanumeric characters.
+
+          Example: /DataStore0
+
+  vm04_gpu_passthrough:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: VM 04 - GPU Passthrough
+    description: >
+      A list of GPU logical names.
+
+      Please make sure to select the GPU that is currently available in your
+
+      Endpoint. A list of GPU logical names available for your endpoint can
+
+      be found in the NativeEdge UI under Endpoints / Hardware / Peripherals
+    required: false
+    default: []
+    item_type: string
+    constraints:
+      - valid_values:
+          - NVIDIA A2
+          - NVIDIA A10
+          - NVIDIA A30
+          - NVIDIA A40
+          - NVIDIA A100
+          - NVIDIA L4
+          - NVIDIA L40
+
+  vm05_static_ip:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: VM 05 - Static IP and Mask Suffix
+    description: >
+      IP address and suffix. Example: 172.16.0.1/16.
+
+      Only required for static IP deployments, not for DHCP.
+    required: false
+    constraints:
+      - pattern: ^((25[0-5]|2[0-4]\d|1\d\d|\d{1,2})(\.(\d{1,3})){3}(\/(3[0-2]|[12]?\d))?|)$
+        error_message: >
+          Invalid format for IP Address in CIDR format.
+
+          Example: 172.16.0.1/16
+
+  vm05_disk:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: VM 05 - Endpoint Datastore Path
+    description: >
+      Deployment datastore path on target endpoint.
+
+      Available datastores can be retrieved from the endpoint screen.
+    default: /DataStore0
+    constraints:
+      - pattern: ^\/[a-zA-Z0-9]+$
+        error_message: >
+          Must start with slash (/), followed by alphanumeric characters.
+
+          Example: /DataStore0
+
+  vm05_gpu_passthrough:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: VM 05 - GPU Passthrough
+    description: >
+      A list of GPU logical names.
+
+      Please make sure to select the GPU that is currently available in your
+
+      Endpoint. A list of GPU logical names available for your endpoint can
+
+      be found in the NativeEdge UI under Endpoints / Hardware / Peripherals
+    required: false
+    default: []
+    item_type: string
+    constraints:
+      - valid_values:
+          - NVIDIA A2
+          - NVIDIA A10
+          - NVIDIA A30
+          - NVIDIA A40
+          - NVIDIA A100
+          - NVIDIA L4
+          - NVIDIA L40
+
+  driver_packages_url:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "drivers.tar.gz"] }
+    description: >
+      Solution example RPM can be dowloaded from https://example.com/solutions/example/2.0.0
+
+  build_essential_packages_url:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "build_essential_packages.tar.gz"] }
+    description: >
+      Solution example RPM can be dowloaded from https://example.com/solutions/example/2.0.0
+
+  driver_install_script:
+    type: string
+    hidden: false
+    display_label: Driver Installation Script
+    description: Driver Installation Script
+    default: NVIDIA-Linux-x86_64-535.154.05.run
+
+  driver_install_params:
+    type: string
+    hidden: false
+    display_label: Driver Installation Params
+    description: Driver Installation Params
+    allow_update: false
+    default: --silent
+
+  packages_list:
+    type: list
+    display_label: Additional Packages
+    description: List of packages needed for driver installation
+    required: false
+    hidden: false
+    default:
+      - ./libnvidia-container1_1.14.4-1_amd64.deb
+      - ./libnvidia-container-tools_1.14.4-1_amd64.deb
+      - ./nvidia-container-toolkit-base_1.14.4-1_amd64.deb
+      - ./nvidia-container-toolkit_1.14.4-1_amd64.deb
+
+  k3s_version:
+    type: string
+    display_label: K3s Version
+    description: K3s version to install
+    default: v1.26.5+k3s1
+    constraints:
+      - valid_values:
+          - v1.26.5+k3s1
+          - v1.26.10+k3s2
+          - v1.27.8+k3s2
+          - v1.28.4+k3s2
+
+  taint_controlplane:
+    type: boolean
+    display_label: Taint Control Plane
+    description: If true, taints control plane (controlplane) nodes
+    hidden: true
+    default: false
+
+  disable_local_storage:
+    type: boolean
+    display_label: Disable Local Storage
+    description: If true, disables local storage
+    hidden: true
+    default: true
+
+  enable_nfs_storage:
+    type: boolean
+    display_label: NFS Storage Class
+    description: Enable to use NFS storage class
+    default: false
+
+  nfs_server:
+    type: string
+    display_label: NFS Server IP Address
+    description: 'IP address. Example: 171.16.0.1'
+    required: false
+    constraints:
+      - pattern: ^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$|^$
+        error_message: >
+          Invalid format for IP Address.
+
+          Example: 172.16.0.1
+
+  nfs_path:
+    type: string
+    display_label: NFS Path
+    description: >
+      Path to the NFS shared directory on the server.
+
+      Example: /nfs
+    required: false
+    constraints:
+      - pattern: ^/|(/[\w-]+)+$
+        error_message: >
+          Invalid format for NFS shared directory path.
+
+          Example: /nfs
+
+  nfs_sc_name:
+    type: string
+    display_label: NFS Storage Class
+    description: >
+      Name of the NFS storage class.
+
+      Example: nfs
+    default: nfs
+    constraints:
+      - pattern: ^[a-z]+(-[a-z]+)*$
+        error_message: >
+          Invalid format for NFS storage class name. Lowercase letters only.
+
+          Example: nfs
+      - min_length: 1
+      - max_length: 63
+
+  k3s_bin:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "k3s"] }
+    description: >
+      Solution example RPM can be dowloaded from https://example.com/solutions/example/2.0.0
+
+  k3s_images_tar_archive:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "k3s-airgap-images-amd64.tar"] }
+    description: >
+      Dependency library that can be downloaded from https://example.domain.com/libs/v2.0.0/library-example-2.0.0.tar.gz
+
+  longhorn_images_tar_archive:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "longhorn_images.tar.gz"] }
+    description: >
+      Dependency library that can be downloaded from https://example.domain.com/libs/v2.0.0/library-example-2.0.0.tar.gz
+
+  helm_tar_archive:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "helm-v3.12.1-linux-amd64.tar.gz"] }
+    description: >
+      Dependency library that can be downloaded from https://example.domain.com/libs/v2.0.0/library-example-2.0.0.tar.gz
+
+  nfs_subdir_external_provisioner_tar_archive:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "nfs-subdir-external-provisioner.tar"] }
+    description: >
+      Dependency library that can be downloaded from https://example.domain.com/libs/v2.0.0/library-example-2.0.0.tar.gz
+
+  nfs_common_packages_tar_archive:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "nfs_common_packages.tar.gz"] }
+    description: >
+      Dependency library that can be downloaded from https://example.domain.com/libs/v2.0.0/library-example-2.0.0.tar.gz
+
+  interface:
+    type: string
+    display_label: Interface Name
+    description: >
+      Name of interface
+
+      Some ubuntu 22.04 images use ens192 or ens160 interface
+    default: enp1s0
+
+  install_nvidia_device_plugin:
+    type: boolean
+    display_label: Install Nvidia Device Plugin
+    description: If true, Nvidia Device Plugin will be installed.
+    hidden: false
+    default: false
+
+  nvidia_image_tar_archive:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "nvidia_device_plugin.tar.gz"] }
+    description: >
+      Dependency library that can be downloaded from https://example.domain.com/libs/v2.0.0/library-example-2.0.0.tar.gz
+
+  environment_type:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Air-Gapped
+    description: >
+      Choose "airgapped" - all the binaries will be downloaded from the local
+
+      artifact store, or "internet_connected" for binaries that are available
+
+      on the Internet with a public URL.
+    default: internet_connected
+    constraints:
+      - valid_values:
+          - airgapped
+          - internet_connected
+
+  artifact_base_url:
+    type: string
+    hidden: true
+    display_label: Artifact Download Base URL
+    description: Artifact Download Base URL value from secret.
+    default: { get_secret: [{get_input: artifact_configuration_secret_name}, "artifact_base_url"] }
+
+  artifact_download_config_secret_name:
+    type: list
+    hidden: true
+    display_label: Artifact Download Config Secret Name
+    description: >
+      The secret name that contains the config used for download
+
+      framework to fetch artifacts.
+    default:
+      - { get_input: artifact_configuration_secret_name }
+      - artifact_curl_config
+
+  vip_dhcp:
+    type: boolean
+    allow_update: false
+    display_label: Use DHCP for VIP
+    description: Switch used to enable DHCP for VIP Address assignment
+    default: false
+
+  vip_address:
+    type: string
+    display_label: Kube VIP IP
+    description: >
+      IP address. Example: 171.16.0.1.
+
+      Must be on the same subnet as the K3s Virtual Machines
+    constraints:
+      - pattern: ^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$
+        error_message: >
+          Invalid format for IP Address.
+
+          Example: 172.16.0.1
+    required: false
+    allow_update: false
+
+  kube_vip_image_tar_archive:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "kube_vip.tar"] }
+    description: >
+      Dependency library that can be downloaded from https://example.domain.com/libs/v2.0.0/library-example-2.0.0.tar.gz
+
+  nginx_image_tar_archive:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "nginx.tar"] }
+    description: >
+      Dependency library that can be downloaded from https://example.domain.com/libs/v2.0.0/library-example-2.0.0.tar.gz
+node_types:
+
+  nativeedge.nodes.VerifyTags:
+    derived_from: nativeedge.nodes.Root
+    properties:
+      vip_address:
+        default: ''
+      vip_dhcp:
+        default: false
+      verify_tags:
+        default: true
+      service_tags:
+        default: []
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: infrastructure/ned_vm/scripts/verify_tags.py
+          executor: central_deployment_agent
+          inputs:
+            verify_tags:
+              default: { get_property: ["SELF", "verify_tags"] }
+            service_tags:
+              default: { get_property: ["SELF", "service_tags"] }
+            vip_address:
+              default: { get_property: ["SELF", "vip_address"] }
+            vip_dhcp:
+              default: { get_property: ["SELF", "vip_dhcp"] }
+
+  nativeedge.nodes.VerifyNetworkConnectivity:
+    derived_from: nativeedge.nodes.Root
+    properties:
+      networks:
+        default: []
+      netmasks:
+        default: []
+      default_routes:
+        default: []
+      kube_vip:
+        default: ''
+      vm_ips:
+        default: []
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: infrastructure/ned_vm/scripts/verify_network_connectivity.py
+          executor: central_deployment_agent
+          inputs:
+            networks:
+              default: { get_property: ["SELF", "networks"] }
+            netmasks:
+              default: { get_property: ["SELF", "netmasks"] }
+            default_routes:
+              default: { get_property: ["SELF", "default_routes"] }
+            kube_vip:
+              default: { get_property: ["SELF", "kube_vip"] }
+            vm_ips:
+              default: { get_property: ["SELF", "vm_ips"] }
+
+node_templates:
+
+  verify_service_tags:
+    type: nativeedge.nodes.VerifyTags
+    properties:
+      vip_address: { get_input: vip_address }
+      vip_dhcp: { get_input: vip_dhcp }
+      verify_tags: { get_input: verify_tags }
+      service_tags:
+        - { get_attribute: ["ece_environment_01", "capabilities", "ece_service_tag"] }
+        - { get_attribute: ["ece_environment_02", "capabilities", "ece_service_tag"] }
+        - { get_attribute: ["ece_environment_03", "capabilities", "ece_service_tag"] }
+        - { get_attribute: ["ece_environment_04", "capabilities", "ece_service_tag"] }
+        - { get_attribute: ["ece_environment_05", "capabilities", "ece_service_tag"] }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: ece_environment_01
+      - type: nativeedge.relationships.depends_on
+        target: ece_environment_02
+      - type: nativeedge.relationships.depends_on
+        target: ece_environment_03
+      - type: nativeedge.relationships.depends_on
+        target: ece_environment_04
+      - type: nativeedge.relationships.depends_on
+        target: ece_environment_05
+
+  binary_image:
+    type: nativeedge.nodes.template.BinaryImage
+    properties:
+      binary_image_config:
+        artifact:
+          path: { get_input: binary_image_artifact_url }
+          username: { get_input: binary_image_artifact_username }
+          access_token: { get_secret: {get_input: binary_image_artifact_access_token_secret_name} }
+        version: { get_input: binary_image_version }
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        precreate:
+          implementation: nativeedge.nativeedge_plugin.tasks.validate_binary_image_config
+        create:
+          implementation: nativeedge.nativeedge_plugin.tasks.upload_binary
+        delete:
+          implementation: nativeedge.nativeedge_plugin.tasks.delete_binary
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: verify_service_tags
+
+  check_vms_connectivity:
+    type: nativeedge.nodes.VerifyNetworkConnectivity
+    properties:
+      networks:
+        - { get_attribute: ["vm_node_01", "capabilities", "network"] }
+        - { get_attribute: ["vm_node_02", "capabilities", "network"] }
+        - { get_attribute: ["vm_node_03", "capabilities", "network"] }
+        - { get_attribute: ["vm_node_04", "capabilities", "network"] }
+        - { get_attribute: ["vm_node_05", "capabilities", "network"] }
+      netmasks:
+        - { get_attribute: ["vm_node_01", "capabilities", "netmask"] }
+        - { get_attribute: ["vm_node_02", "capabilities", "netmask"] }
+        - { get_attribute: ["vm_node_03", "capabilities", "netmask"] }
+        - { get_attribute: ["vm_node_04", "capabilities", "netmask"] }
+        - { get_attribute: ["vm_node_05", "capabilities", "netmask"] }
+      default_routes:
+        - { get_attribute: ["vm_node_01", "capabilities", "default_route"] }
+        - { get_attribute: ["vm_node_02", "capabilities", "default_route"] }
+        - { get_attribute: ["vm_node_03", "capabilities", "default_route"] }
+        - { get_attribute: ["vm_node_04", "capabilities", "default_route"] }
+        - { get_attribute: ["vm_node_05", "capabilities", "default_route"] }
+      kube_vip: { get_input: vip_address }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_node_01
+      - type: nativeedge.relationships.depends_on
+        target: vm_node_02
+      - type: nativeedge.relationships.depends_on
+        target: vm_node_03
+      - type: nativeedge.relationships.depends_on
+        target: vm_node_04
+      - type: nativeedge.relationships.depends_on
+        target: vm_node_05
+
+  netplan_node_01:
+    type: nativeedge.nodes.CloudInit.CloudConfig
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: infrastructure/ned_vm/scripts/prepare_resource_config.py
+          executor: central_deployment_agent
+          inputs:
+            template: infrastructure/ned_vm/templates/network_config.yaml
+            parameters:
+              use_dhcp: { get_input: dhcp }
+              static_ip: { get_input: vm01_static_ip }
+              gateway: { get_input: gateway }
+              dns: { get_input: dns }
+
+  vm_ssh_proxy_01:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: nativeedge.nativeedge_plugin.tasks.get_eo_proxy
+          max_retries: 2
+          inputs:
+            serviceTag: { get_attribute: ["vm_nativeedge_01", "capabilities", "service_tag"] }
+            vmRef: { get_attribute: ["vm_nativeedge_01", "capabilities", "vm_name"] }
+            port: { get_input: proxy_port_01 }
+        update:
+          implementation: nativeedge.nativeedge_plugin.tasks.get_eo_proxy
+          max_retries: 2
+          inputs:
+            serviceTag: { get_attribute: ["vm_nativeedge_01", "capabilities", "service_tag"] }
+            vmRef: { get_attribute: ["vm_nativeedge_01", "capabilities", "vm_name"] }
+            port: { get_input: proxy_port_01 }
+        check_drift:
+          implementation: infrastructure/ned_vm/scripts/check_drift.py
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_nativeedge_01
+
+  vm_node_01:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: infrastructure/ned_vm/scripts/get_vm_info.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_ssh_proxy_01", "eo_proxy_url"] }
+              user: { get_attribute: ["vm_nativeedge_01", "capabilities", "vm_username"] }
+              key: { get_secret: {get_attribute: [vm_nativeedge_01, capabilities, vm_ssh_key_secret_name]} }
+              port: { get_attribute: ["vm_ssh_proxy_01", "eo_proxy_port"] }
+            process:
+              env:
+                VM_HOST: { get_attribute: ["vm_ssh_proxy_01", "eo_proxy_url"] }
+                VM_NAME: { get_attribute: ["vm_nativeedge_01", "capabilities", "vm_name"] }
+                VM_USERNAME: { get_attribute: ["vm_nativeedge_01", "capabilities", "vm_username"] }
+                VM_SSH_PORT: { get_attribute: ["vm_ssh_proxy_01", "eo_proxy_port"] }
+                INTERFACE: { get_input: interface }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_ssh_proxy_01
+
+  ece_environment_01:
+    type: nativeedge.nodes.SharedResource
+    properties:
+      resource_config:
+        deployment:
+          id: { get_input: ece_01_deployment_id }
+
+  ece_environment_02:
+    type: nativeedge.nodes.SharedResource
+    properties:
+      resource_config:
+        deployment:
+          id: { get_input: ece_02_deployment_id }
+
+  ece_environment_03:
+    type: nativeedge.nodes.SharedResource
+    properties:
+      resource_config:
+        deployment:
+          id: { get_input: ece_03_deployment_id }
+
+  netplan_node_02:
+    type: nativeedge.nodes.CloudInit.CloudConfig
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: infrastructure/ned_vm/scripts/prepare_resource_config.py
+          executor: central_deployment_agent
+          inputs:
+            template: infrastructure/ned_vm/templates/network_config.yaml
+            parameters:
+              use_dhcp: { get_input: dhcp }
+              static_ip: { get_input: vm02_static_ip }
+              gateway: { get_input: gateway }
+              dns: { get_input: dns }
+
+  netplan_node_03:
+    type: nativeedge.nodes.CloudInit.CloudConfig
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: infrastructure/ned_vm/scripts/prepare_resource_config.py
+          executor: central_deployment_agent
+          inputs:
+            template: infrastructure/ned_vm/templates/network_config.yaml
+            parameters:
+              use_dhcp: { get_input: dhcp }
+              static_ip: { get_input: vm03_static_ip }
+              gateway: { get_input: gateway }
+              dns: { get_input: dns }
+
+  vm_nativeedge_01:
+    type: nativeedge.nodes.ServiceComponent
+    properties:
+      resource_config:
+        blueprint:
+          external_resource: true
+          id: Virtual_Machine_with_cloud-init_for_NativeEdge_Endpoint_2.0.0
+        deployment:
+          inputs:
+            vm_user_name: { get_input: vm_user_name }
+            key_public_secret_name: { get_input: ssh_user_public_key_secret_name }
+            key_private_secret_name: { get_input: ssh_user_private_key_secret_name }
+            service_tag: { get_attribute: ["ece_environment_01", "capabilities", "ece_service_tag"] }
+            name: { concat: [{get_input: hostname}, "-node01"] }
+            image: { get_attribute: ["binary_image", "binary_details", "extra", "artifact_id"] }
+            os_type: { get_input: os_type }
+            cpu: { get_input: vcpus }
+            memory: { get_input: memory_size }
+            storage: { get_input: os_disk_size }
+            disk: { get_input: vm01_disk }
+            hardware_options.vTPM: { get_input: hardware_options.vTPM }
+            hardware_options.secure_boot: { get_input: hardware_options.secure_boot }
+            hardware_options.firmware_type: { get_input: hardware_options.firmware_type }
+            enable_management: { get_input: enable_management }
+            network_settings: { get_input: network_settings }
+            usb: { get_input: usb }
+            serial_port: { get_input: serial_port }
+            gpu: { get_input: vm01_gpu_passthrough }
+            video: { get_input: video }
+            netplan_cloudinit: { get_attribute: ["netplan_node_01", "template_resource_config"] }
+            cloudinit: { get_input: cloudinit }
+            iso_files: { get_input: iso_files }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: binary_image
+      - type: nativeedge.relationships.depends_on
+        target: netplan_node_01
+
+  vm_nativeedge_02:
+    type: nativeedge.nodes.ServiceComponent
+    properties:
+      resource_config:
+        blueprint:
+          external_resource: true
+          id: Virtual_Machine_with_cloud-init_for_NativeEdge_Endpoint_2.0.0
+        deployment:
+          inputs:
+            vm_user_name: { get_input: vm_user_name }
+            key_public_secret_name: { get_input: ssh_user_public_key_secret_name }
+            key_private_secret_name: { get_input: ssh_user_private_key_secret_name }
+            service_tag: { get_attribute: ["ece_environment_02", "capabilities", "ece_service_tag"] }
+            name: { concat: [{get_input: hostname}, "-node02"] }
+            image: { get_attribute: ["binary_image", "binary_details", "extra", "artifact_id"] }
+            os_type: { get_input: os_type }
+            cpu: { get_input: vcpus }
+            memory: { get_input: memory_size }
+            storage: { get_input: os_disk_size }
+            disk: { get_input: vm02_disk }
+            hardware_options.vTPM: { get_input: hardware_options.vTPM }
+            hardware_options.secure_boot: { get_input: hardware_options.secure_boot }
+            hardware_options.firmware_type: { get_input: hardware_options.firmware_type }
+            enable_management: { get_input: enable_management }
+            network_settings: { get_input: network_settings }
+            usb: { get_input: usb }
+            serial_port: { get_input: serial_port }
+            gpu: { get_input: vm02_gpu_passthrough }
+            video: { get_input: video }
+            netplan_cloudinit: { get_attribute: ["netplan_node_02", "template_resource_config"] }
+            cloudinit: { get_input: cloudinit }
+            iso_files: { get_input: iso_files }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: binary_image
+      - type: nativeedge.relationships.depends_on
+        target: netplan_node_02
+
+  vm_ssh_proxy_02:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: nativeedge.nativeedge_plugin.tasks.get_eo_proxy
+          max_retries: 2
+          inputs:
+            serviceTag: { get_attribute: ["vm_nativeedge_02", "capabilities", "service_tag"] }
+            vmRef: { get_attribute: ["vm_nativeedge_02", "capabilities", "vm_name"] }
+            port: { get_input: proxy_port_02 }
+        update:
+          implementation: nativeedge.nativeedge_plugin.tasks.get_eo_proxy
+          max_retries: 2
+          inputs:
+            serviceTag: { get_attribute: ["vm_nativeedge_02", "capabilities", "service_tag"] }
+            vmRef: { get_attribute: ["vm_nativeedge_02", "capabilities", "vm_name"] }
+            port: { get_input: proxy_port_02 }
+        check_drift:
+          implementation: infrastructure/ned_vm/scripts/check_drift.py
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_nativeedge_02
+
+  vm_node_02:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: infrastructure/ned_vm/scripts/get_vm_info.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_ssh_proxy_02", "eo_proxy_url"] }
+              user: { get_attribute: ["vm_nativeedge_02", "capabilities", "vm_username"] }
+              key: { get_secret: {get_attribute: [vm_nativeedge_02, capabilities, vm_ssh_key_secret_name]} }
+              port: { get_attribute: ["vm_ssh_proxy_02", "eo_proxy_port"] }
+            process:
+              env:
+                VM_HOST: { get_attribute: ["vm_ssh_proxy_02", "eo_proxy_url"] }
+                VM_NAME: { get_attribute: ["vm_nativeedge_02", "capabilities", "vm_name"] }
+                VM_USERNAME: { get_attribute: ["vm_nativeedge_02", "capabilities", "vm_username"] }
+                VM_SSH_PORT: { get_attribute: ["vm_ssh_proxy_02", "eo_proxy_port"] }
+                INTERFACE: { get_input: interface }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_ssh_proxy_02
+
+  vm_nativeedge_03:
+    type: nativeedge.nodes.ServiceComponent
+    properties:
+      resource_config:
+        blueprint:
+          external_resource: true
+          id: Virtual_Machine_with_cloud-init_for_NativeEdge_Endpoint_2.0.0
+        deployment:
+          inputs:
+            vm_user_name: { get_input: vm_user_name }
+            key_public_secret_name: { get_input: ssh_user_public_key_secret_name }
+            key_private_secret_name: { get_input: ssh_user_private_key_secret_name }
+            service_tag: { get_attribute: ["ece_environment_03", "capabilities", "ece_service_tag"] }
+            name: { concat: [{get_input: hostname}, "-node03"] }
+            image: { get_attribute: ["binary_image", "binary_details", "extra", "artifact_id"] }
+            os_type: { get_input: os_type }
+            cpu: { get_input: vcpus }
+            memory: { get_input: memory_size }
+            storage: { get_input: os_disk_size }
+            disk: { get_input: vm03_disk }
+            hardware_options.vTPM: { get_input: hardware_options.vTPM }
+            hardware_options.secure_boot: { get_input: hardware_options.secure_boot }
+            hardware_options.firmware_type: { get_input: hardware_options.firmware_type }
+            enable_management: { get_input: enable_management }
+            network_settings: { get_input: network_settings }
+            usb: { get_input: usb }
+            serial_port: { get_input: serial_port }
+            gpu: { get_input: vm03_gpu_passthrough }
+            video: { get_input: video }
+            netplan_cloudinit: { get_attribute: ["netplan_node_03", "template_resource_config"] }
+            cloudinit: { get_input: cloudinit }
+            iso_files: { get_input: iso_files }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: binary_image
+      - type: nativeedge.relationships.depends_on
+        target: netplan_node_03
+
+  vm_ssh_proxy_03:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: nativeedge.nativeedge_plugin.tasks.get_eo_proxy
+          max_retries: 2
+          inputs:
+            serviceTag: { get_attribute: ["vm_nativeedge_03", "capabilities", "service_tag"] }
+            vmRef: { get_attribute: ["vm_nativeedge_03", "capabilities", "vm_name"] }
+            port: { get_input: proxy_port_03 }
+        update:
+          implementation: nativeedge.nativeedge_plugin.tasks.get_eo_proxy
+          max_retries: 2
+          inputs:
+            serviceTag: { get_attribute: ["vm_nativeedge_03", "capabilities", "service_tag"] }
+            vmRef: { get_attribute: ["vm_nativeedge_03", "capabilities", "vm_name"] }
+            port: { get_input: proxy_port_03 }
+        check_drift:
+          implementation: infrastructure/ned_vm/scripts/check_drift.py
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_nativeedge_03
+
+  vm_node_03:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: infrastructure/ned_vm/scripts/get_vm_info.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_ssh_proxy_03", "eo_proxy_url"] }
+              user: { get_attribute: ["vm_nativeedge_03", "capabilities", "vm_username"] }
+              key: { get_secret: {get_attribute: [vm_nativeedge_03, capabilities, vm_ssh_key_secret_name]} }
+              port: { get_attribute: ["vm_ssh_proxy_03", "eo_proxy_port"] }
+            process:
+              env:
+                VM_HOST: { get_attribute: ["vm_ssh_proxy_03", "eo_proxy_url"] }
+                VM_NAME: { get_attribute: ["vm_nativeedge_03", "capabilities", "vm_name"] }
+                VM_USERNAME: { get_attribute: ["vm_nativeedge_03", "capabilities", "vm_username"] }
+                VM_SSH_PORT: { get_attribute: ["vm_ssh_proxy_03", "eo_proxy_port"] }
+                INTERFACE: { get_input: interface }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_ssh_proxy_03
+
+  ece_environment_04:
+    type: nativeedge.nodes.SharedResource
+    properties:
+      resource_config:
+        deployment:
+          id: { get_input: ece_04_deployment_id }
+
+  ece_environment_05:
+    type: nativeedge.nodes.SharedResource
+    properties:
+      resource_config:
+        deployment:
+          id: { get_input: ece_05_deployment_id }
+
+  netplan_node_04:
+    type: nativeedge.nodes.CloudInit.CloudConfig
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: infrastructure/ned_vm/scripts/prepare_resource_config.py
+          executor: central_deployment_agent
+          inputs:
+            template: infrastructure/ned_vm/templates/network_config.yaml
+            parameters:
+              use_dhcp: { get_input: dhcp }
+              static_ip: { get_input: vm04_static_ip }
+              gateway: { get_input: gateway }
+              dns: { get_input: dns }
+
+  netplan_node_05:
+    type: nativeedge.nodes.CloudInit.CloudConfig
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: infrastructure/ned_vm/scripts/prepare_resource_config.py
+          executor: central_deployment_agent
+          inputs:
+            template: infrastructure/ned_vm/templates/network_config.yaml
+            parameters:
+              use_dhcp: { get_input: dhcp }
+              static_ip: { get_input: vm05_static_ip }
+              gateway: { get_input: gateway }
+              dns: { get_input: dns }
+
+  vm_nativeedge_04:
+    type: nativeedge.nodes.ServiceComponent
+    properties:
+      resource_config:
+        blueprint:
+          external_resource: true
+          id: Virtual_Machine_with_cloud-init_for_NativeEdge_Endpoint_2.0.0
+        deployment:
+          inputs:
+            vm_user_name: { get_input: vm_user_name }
+            key_public_secret_name: { get_input: ssh_user_public_key_secret_name }
+            key_private_secret_name: { get_input: ssh_user_private_key_secret_name }
+            service_tag: { get_attribute: ["ece_environment_04", "capabilities", "ece_service_tag"] }
+            name: { concat: [{get_input: hostname}, "-node04"] }
+            image: { get_attribute: ["binary_image", "binary_details", "extra", "artifact_id"] }
+            os_type: { get_input: os_type }
+            cpu: { get_input: vcpus }
+            memory: { get_input: memory_size }
+            storage: { get_input: os_disk_size }
+            disk: { get_input: vm04_disk }
+            hardware_options.vTPM: { get_input: hardware_options.vTPM }
+            hardware_options.secure_boot: { get_input: hardware_options.secure_boot }
+            hardware_options.firmware_type: { get_input: hardware_options.firmware_type }
+            enable_management: { get_input: enable_management }
+            network_settings: { get_input: network_settings }
+            usb: { get_input: usb }
+            serial_port: { get_input: serial_port }
+            gpu: { get_input: vm04_gpu_passthrough }
+            video: { get_input: video }
+            netplan_cloudinit: { get_attribute: ["netplan_node_04", "template_resource_config"] }
+            cloudinit: { get_input: cloudinit }
+            iso_files: { get_input: iso_files }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: binary_image
+      - type: nativeedge.relationships.depends_on
+        target: netplan_node_04
+
+  vm_ssh_proxy_04:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: nativeedge.nativeedge_plugin.tasks.get_eo_proxy
+          max_retries: 2
+          inputs:
+            serviceTag: { get_attribute: ["vm_nativeedge_04", "capabilities", "service_tag"] }
+            vmRef: { get_attribute: ["vm_nativeedge_04", "capabilities", "vm_name"] }
+            port: { get_input: proxy_port_04 }
+        update:
+          implementation: nativeedge.nativeedge_plugin.tasks.get_eo_proxy
+          max_retries: 2
+          inputs:
+            serviceTag: { get_attribute: ["vm_nativeedge_04", "capabilities", "service_tag"] }
+            vmRef: { get_attribute: ["vm_nativeedge_04", "capabilities", "vm_name"] }
+            port: { get_input: proxy_port_04 }
+        check_drift:
+          implementation: infrastructure/ned_vm/scripts/check_drift.py
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_nativeedge_04
+
+  vm_node_04:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: infrastructure/ned_vm/scripts/get_vm_info.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_ssh_proxy_04", "eo_proxy_url"] }
+              user: { get_attribute: ["vm_nativeedge_04", "capabilities", "vm_username"] }
+              key: { get_secret: {get_attribute: [vm_nativeedge_04, capabilities, vm_ssh_key_secret_name]} }
+              port: { get_attribute: ["vm_ssh_proxy_04", "eo_proxy_port"] }
+            process:
+              env:
+                VM_HOST: { get_attribute: ["vm_ssh_proxy_04", "eo_proxy_url"] }
+                VM_NAME: { get_attribute: ["vm_nativeedge_04", "capabilities", "vm_name"] }
+                VM_USERNAME: { get_attribute: ["vm_nativeedge_04", "capabilities", "vm_username"] }
+                VM_SSH_PORT: { get_attribute: ["vm_ssh_proxy_04", "eo_proxy_port"] }
+                INTERFACE: { get_input: interface }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_ssh_proxy_04
+
+  vm_nativeedge_05:
+    type: nativeedge.nodes.ServiceComponent
+    properties:
+      resource_config:
+        blueprint:
+          external_resource: true
+          id: Virtual_Machine_with_cloud-init_for_NativeEdge_Endpoint_2.0.0
+        deployment:
+          inputs:
+            vm_user_name: { get_input: vm_user_name }
+            key_public_secret_name: { get_input: ssh_user_public_key_secret_name }
+            key_private_secret_name: { get_input: ssh_user_private_key_secret_name }
+            service_tag: { get_attribute: ["ece_environment_05", "capabilities", "ece_service_tag"] }
+            name: { concat: [{get_input: hostname}, "-node05"] }
+            image: { get_attribute: ["binary_image", "binary_details", "extra", "artifact_id"] }
+            os_type: { get_input: os_type }
+            cpu: { get_input: vcpus }
+            memory: { get_input: memory_size }
+            storage: { get_input: os_disk_size }
+            disk: { get_input: vm05_disk }
+            hardware_options.vTPM: { get_input: hardware_options.vTPM }
+            hardware_options.secure_boot: { get_input: hardware_options.secure_boot }
+            hardware_options.firmware_type: { get_input: hardware_options.firmware_type }
+            enable_management: { get_input: enable_management }
+            network_settings: { get_input: network_settings }
+            usb: { get_input: usb }
+            serial_port: { get_input: serial_port }
+            gpu: { get_input: vm05_gpu_passthrough }
+            video: { get_input: video }
+            netplan_cloudinit: { get_attribute: ["netplan_node_05", "template_resource_config"] }
+            cloudinit: { get_input: cloudinit }
+            iso_files: { get_input: iso_files }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: binary_image
+      - type: nativeedge.relationships.depends_on
+        target: netplan_node_05
+
+  vm_ssh_proxy_05:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: nativeedge.nativeedge_plugin.tasks.get_eo_proxy
+          max_retries: 2
+          inputs:
+            serviceTag: { get_attribute: ["vm_nativeedge_05", "capabilities", "service_tag"] }
+            vmRef: { get_attribute: ["vm_nativeedge_05", "capabilities", "vm_name"] }
+            port: { get_input: proxy_port_05 }
+        update:
+          implementation: nativeedge.nativeedge_plugin.tasks.get_eo_proxy
+          max_retries: 2
+          inputs:
+            serviceTag: { get_attribute: ["vm_nativeedge_05", "capabilities", "service_tag"] }
+            vmRef: { get_attribute: ["vm_nativeedge_05", "capabilities", "vm_name"] }
+            port: { get_input: proxy_port_05 }
+        check_drift:
+          implementation: infrastructure/ned_vm/scripts/check_drift.py
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_nativeedge_05
+
+  vm_node_05:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: infrastructure/ned_vm/scripts/get_vm_info.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_ssh_proxy_05", "eo_proxy_url"] }
+              user: { get_attribute: ["vm_nativeedge_05", "capabilities", "vm_username"] }
+              key: { get_secret: {get_attribute: [vm_nativeedge_05, capabilities, vm_ssh_key_secret_name]} }
+              port: { get_attribute: ["vm_ssh_proxy_05", "eo_proxy_port"] }
+            process:
+              env:
+                VM_HOST: { get_attribute: ["vm_ssh_proxy_05", "eo_proxy_url"] }
+                VM_NAME: { get_attribute: ["vm_nativeedge_05", "capabilities", "vm_name"] }
+                VM_USERNAME: { get_attribute: ["vm_nativeedge_05", "capabilities", "vm_username"] }
+                VM_SSH_PORT: { get_attribute: ["vm_ssh_proxy_05", "eo_proxy_port"] }
+                INTERFACE: { get_input: interface }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_ssh_proxy_05
+
+  install_nvidia_drivers_01:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        precreate:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/download_files.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_01", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_01", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                CURL_CONFIG: { concat: [\\\"\\\, {get_secret: {get_input: artifact_download_config_secret_name}}, \\\"\\\] }
+                DRIVER_PACKAGES_URL: { get_input: driver_packages_url }
+                BUILD_ESSENTIAL_PACKAGES_URL: { get_input: build_essential_packages_url }
+                DRIVER_INSTALL_SCRIPT: { get_input: driver_install_script }
+                GPU: { get_input: vm01_gpu_passthrough }
+                ENVIRONMENT_TYPE: { get_input: environment_type }
+                PACKAGES: { get_input: packages_list }
+        create:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/installation.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_01", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_01", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                PACKAGE_PATH: { get_attribute: ["SELF", "packages_folder"] }
+                PACKAGES: { get_input: packages_list }
+                GPU: { get_input: vm01_gpu_passthrough }
+        start:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/installation.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_01", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_01", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                SCRIPT_EXECUTION: 'true'
+                SCRIPT_FILE: { get_attribute: ["SELF", "installation_script"] }
+                SCRIPT_PARAMS: { get_input: driver_install_params }
+                GPU: { get_input: vm01_gpu_passthrough }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: check_vms_connectivity
+
+  install_nvidia_drivers_02:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        precreate:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/download_files.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_02", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_02", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                CURL_CONFIG: { concat: [\\\"\\\, {get_secret: {get_input: artifact_download_config_secret_name}}, \\\"\\\] }
+                DRIVER_PACKAGES_URL: { get_input: driver_packages_url }
+                BUILD_ESSENTIAL_PACKAGES_URL: { get_input: build_essential_packages_url }
+                DRIVER_INSTALL_SCRIPT: { get_input: driver_install_script }
+                GPU: { get_input: vm02_gpu_passthrough }
+                ENVIRONMENT_TYPE: { get_input: environment_type }
+                PACKAGES: { get_input: packages_list }
+        create:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/installation.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_02", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_02", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                PACKAGE_PATH: { get_attribute: ["SELF", "packages_folder"] }
+                PACKAGES: { get_input: packages_list }
+                GPU: { get_input: vm02_gpu_passthrough }
+        start:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/installation.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_02", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_02", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                SCRIPT_EXECUTION: 'true'
+                SCRIPT_FILE: { get_attribute: ["SELF", "installation_script"] }
+                SCRIPT_PARAMS: { get_input: driver_install_params }
+                GPU: { get_input: vm02_gpu_passthrough }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: check_vms_connectivity
+
+  install_nvidia_drivers_03:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        precreate:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/download_files.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_03", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_03", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                CURL_CONFIG: { concat: [\\\"\\\, {get_secret: {get_input: artifact_download_config_secret_name}}, \\\"\\\] }
+                DRIVER_PACKAGES_URL: { get_input: driver_packages_url }
+                BUILD_ESSENTIAL_PACKAGES_URL: { get_input: build_essential_packages_url }
+                DRIVER_INSTALL_SCRIPT: { get_input: driver_install_script }
+                GPU: { get_input: vm03_gpu_passthrough }
+                ENVIRONMENT_TYPE: { get_input: environment_type }
+                PACKAGES: { get_input: packages_list }
+        create:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/installation.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_03", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_03", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                PACKAGE_PATH: { get_attribute: ["SELF", "packages_folder"] }
+                PACKAGES: { get_input: packages_list }
+                GPU: { get_input: vm03_gpu_passthrough }
+        start:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/installation.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_03", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_03", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                SCRIPT_EXECUTION: 'true'
+                SCRIPT_FILE: { get_attribute: ["SELF", "installation_script"] }
+                SCRIPT_PARAMS: { get_input: driver_install_params }
+                GPU: { get_input: vm03_gpu_passthrough }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: check_vms_connectivity
+
+  install_nvidia_drivers_04:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        precreate:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/download_files.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_04", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_04", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                CURL_CONFIG: { concat: [\\\"\\\, {get_secret: {get_input: artifact_download_config_secret_name}}, \\\"\\\] }
+                DRIVER_PACKAGES_URL: { get_input: driver_packages_url }
+                DRIVER_INSTALL_SCRIPT: { get_input: driver_install_script }
+                BUILD_ESSENTIAL_PACKAGES_URL: { get_input: build_essential_packages_url }
+                GPU: { get_input: vm04_gpu_passthrough }
+                ENVIRONMENT_TYPE: { get_input: environment_type }
+                PACKAGES: { get_input: packages_list }
+        create:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/installation.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_04", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_04", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                PACKAGE_PATH: { get_attribute: ["SELF", "packages_folder"] }
+                PACKAGES: { get_input: packages_list }
+                GPU: { get_input: vm04_gpu_passthrough }
+        start:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/installation.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_04", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_04", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                SCRIPT_EXECUTION: 'true'
+                SCRIPT_FILE: { get_attribute: ["SELF", "installation_script"] }
+                SCRIPT_PARAMS: { get_input: driver_install_params }
+                GPU: { get_input: vm04_gpu_passthrough }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: check_vms_connectivity
+
+  install_nvidia_drivers_05:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        precreate:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/download_files.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_05", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_05", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                CURL_CONFIG: { concat: [\\\"\\\, {get_secret: {get_input: artifact_download_config_secret_name}}, \\\"\\\] }
+                DRIVER_PACKAGES_URL: { get_input: driver_packages_url }
+                BUILD_ESSENTIAL_PACKAGES_URL: { get_input: build_essential_packages_url }
+                DRIVER_INSTALL_SCRIPT: { get_input: driver_install_script }
+                GPU: { get_input: vm05_gpu_passthrough }
+                ENVIRONMENT_TYPE: { get_input: environment_type }
+                PACKAGES: { get_input: packages_list }
+        create:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/installation.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_05", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_05", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                PACKAGE_PATH: { get_attribute: ["SELF", "packages_folder"] }
+                PACKAGES: { get_input: packages_list }
+                GPU: { get_input: vm05_gpu_passthrough }
+        start:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: nvidia_drivers/scripts/installation.sh
+            fabric_env:
+              host_string: { get_attribute: ["vm_node_05", "capabilities", "vm_host"] }
+              user: { get_input: vm_user_name }
+              key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+              port: { get_attribute: ["vm_node_05", "capabilities", "vm_ssh_port"] }
+            process:
+              env:
+                SCRIPT_EXECUTION: 'true'
+                SCRIPT_FILE: { get_attribute: ["SELF", "installation_script"] }
+                SCRIPT_PARAMS: { get_input: driver_install_params }
+                GPU: { get_input: vm05_gpu_passthrough }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: check_vms_connectivity
+
+  k3s_install:
+    type: nativeedge.nodes.ServiceComponent
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start:
+          timeout: 3600
+    properties:
+      resource_config:
+        blueprint:
+          external_resource: true
+          id: K3S_5-node_2.0.0
+        deployment:
+          inputs:
+            node1_ip: { get_attribute: ["vm_node_01", "capabilities", "vm_host"] }
+            node1_public_ip: { get_attribute: ["vm_node_01", "capabilities", "vm_public_ip"] }
+            node1_username: { get_input: vm_user_name }
+            node1_ssh_key_private: { get_input: ssh_user_private_key_secret_name }
+            node1_port: { get_attribute: ["vm_node_01", "capabilities", "vm_ssh_port"] }
+            node2_ip: { get_attribute: ["vm_node_02", "capabilities", "vm_host"] }
+            node2_public_ip: { get_attribute: ["vm_node_02", "capabilities", "vm_public_ip"] }
+            node2_username: { get_input: vm_user_name }
+            node2_ssh_key_private: { get_input: ssh_user_private_key_secret_name }
+            node2_port: { get_attribute: ["vm_node_02", "capabilities", "vm_ssh_port"] }
+            node3_ip: { get_attribute: ["vm_node_03", "capabilities", "vm_host"] }
+            node3_public_ip: { get_attribute: ["vm_node_03", "capabilities", "vm_public_ip"] }
+            node3_username: { get_input: vm_user_name }
+            node3_ssh_key_private: { get_input: ssh_user_private_key_secret_name }
+            node3_port: { get_attribute: ["vm_node_03", "capabilities", "vm_ssh_port"] }
+            node4_ip: { get_attribute: ["vm_node_04", "capabilities", "vm_host"] }
+            node4_public_ip: { get_attribute: ["vm_node_04", "capabilities", "vm_public_ip"] }
+            node4_port: { get_attribute: ["vm_node_04", "capabilities", "vm_ssh_port"] }
+            node4_username: { get_input: vm_user_name }
+            node4_ssh_key_private: { get_input: ssh_user_private_key_secret_name }
+            node5_ip: { get_attribute: ["vm_node_05", "capabilities", "vm_host"] }
+            node5_public_ip: { get_attribute: ["vm_node_05", "capabilities", "vm_public_ip"] }
+            node5_port: { get_attribute: ["vm_node_05", "capabilities", "vm_ssh_port"] }
+            node5_username: { get_input: vm_user_name }
+            node5_ssh_key_private: { get_input: ssh_user_private_key_secret_name }
+            interface: { get_input: interface }
+            vip_address: { get_input: vip_address }
+            vip_dhcp: { get_input: vip_dhcp }
+            k3s_version: { get_input: k3s_version }
+            disable_local_storage: { get_input: disable_local_storage }
+            taint_controlplane: { get_input: taint_controlplane }
+            install_longhorn: true
+            longhorn_replicas_number: 5
+            enable_nfs_storage: { get_input: enable_nfs_storage }
+            nfs_server: { get_input: nfs_server }
+            nfs_path: { get_input: nfs_path }
+            nfs_sc_name: nfs
+            k3s_bin: { get_input: k3s_bin }
+            k3s_images_tar_archive: { get_input: k3s_images_tar_archive }
+            longhorn_images_tar_archive: { get_input: longhorn_images_tar_archive }
+            kube_vip_image_tar_archive: { get_input: kube_vip_image_tar_archive }
+            nginx_image_tar_archive: { get_input: nginx_image_tar_archive }
+            helm_tar_archive: { get_input: helm_tar_archive }
+            nfs_subdir_external_provisioner_tar_archive: { get_input: nfs_subdir_external_provisioner_tar_archive }
+            nfs_common_packages_tar_archive: { get_input: nfs_common_packages_tar_archive }
+            environment_type: { get_input: environment_type }
+            artifact_download_config_secret_name: { get_input: artifact_download_config_secret_name }
+            install_nvidia_device_plugin: { get_input: install_nvidia_device_plugin }
+            nvidia_image_tar_archive: { get_input: nvidia_image_tar_archive }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: check_vms_connectivity
+      - type: nativeedge.relationships.depends_on
+        target: install_nvidia_drivers_01
+      - type: nativeedge.relationships.depends_on
+        target: install_nvidia_drivers_02
+      - type: nativeedge.relationships.depends_on
+        target: install_nvidia_drivers_03
+      - type: nativeedge.relationships.depends_on
+        target: install_nvidia_drivers_04
+      - type: nativeedge.relationships.depends_on
+        target: install_nvidia_drivers_05
+
+dsl_definitions:
+
+  driver_packages_tar: drivers.tar.gz
+
+  build_essential_packages_tar: build_essential_packages.tar.gz
+
+  k3s_bin: k3s
+
+  k3s_images_tar_archive: k3s-airgap-images-amd64.tar
+
+  longhorn_images_tar_archive: longhorn_images.tar.gz
+
+  helm_tar_archive: helm-v3.12.1-linux-amd64.tar.gz
+
+  nfs_subdir_external_provisioner_tar_archive: nfs-subdir-external-provisioner.tar
+
+  nfs_common_packages_tar_archive: nfs_common_packages.tar.gz
+
+  nvidia_image_tar_archive: nvidia_device_plugin.tar.gz
+
+  kube_vip_image_tar_archive: kube_vip.tar
+
+  nginx_image_tar_archive: nginx.tar
+capabilities:
+
+  cluster_endpoint:
+    description: The endpoint of K3S cluster
+    value: { get_attribute: ["k3s_install", "capabilities", "cluster_endpoint"] }
+
+  longhorn:
+    description: Longhorn endpoint
+    value: { get_attribute: ["k3s_install", "capabilities", "longhorn"] }
+
+  short_term_sc:
+    description: Short-term storage class name (local storage)
+    value: { get_attribute: ["k3s_install", "capabilities", "short_term_sc"] }
+
+  longhorn_long_term_sc:
+    description: Longhorn long-term storage class name (1 replica)
+    value: { get_attribute: ["k3s_install", "capabilities", "longhorn_long_term_sc"] }
+
+  nfs_long_term_sc:
+    description: Longhorn long-term storage class name (1 replica)
+    value: { get_attribute: ["k3s_install", "capabilities", "nfs_long_term_sc"] }
+
+  cluster_k3s_token:
+    description: Secret with token used for adding controlplane and worker nodes to cluster
+    value: { get_attribute: ["k3s_install", "capabilities", "cluster_k3s_token"] }
+
+  kubeconfig_secret_name:
+    description: Secret with kubeconfig file of the newly created cluster
+    value: { get_attribute: ["k3s_install", "capabilities", "kubeconfig_secret_name"] }
+
+  kubernetes_credentials:
+    description: Secret with kubernetes credentials of the newly created cluster
+    value: { get_attribute: ["k3s_install", "capabilities", "kubernetes_credentials"] }
+
+  node01_ip:
+    description: IP of k3s_server_01
+    value: { get_attribute: ["vm_node_01", "capabilities", "vm_public_ip"] }
+
+  node01_username:
+    description: Username of k3s_server_01
+    value: { get_input: vm_user_name }
+
+  node01_ssh_key_private:
+    description: SSH private key for k3s_server_01
+    value: { get_input: ssh_user_private_key_secret_name }
+
+  node01_superpipe_data:
+    description: Data to reach the kubernetes endpoint over management interface
+    value:
+      serviceTag: { get_attribute: ["vm_nativeedge_01", "capabilities", "service_tag"] }
+      vmRef: { get_attribute: ["vm_nativeedge_01", "capabilities", "vm_name"] }
+      port: { get_input: proxy_port_01 }
+
+  node02_ip:
+    description: IP of k3s_server_02
+    value: { get_attribute: ["vm_node_02", "capabilities", "vm_public_ip"] }
+
+  node02_username:
+    description: Username of k3s_server_02
+    value: { get_input: vm_user_name }
+
+  node02_ssh_key_private:
+    description: SSH key secret name of k3s_server_02
+    value: { get_input: ssh_user_private_key_secret_name }
+
+  node03_ip:
+    description: IP of k3s_server_03
+    value: { get_attribute: ["vm_node_03", "capabilities", "vm_public_ip"] }
+
+  node03_username:
+    description: Username of k3s_server_03
+    value: { get_input: vm_user_name }
+
+  node03_ssh_key_private:
+    description: SSH key secret name of k3s_server_03
+    value: { get_input: ssh_user_private_key_secret_name }
+
+  node02_superpipe_data:
+    description: Data to reach the kubernetes endpoint over management interface
+    value:
+      serviceTag: { get_attribute: ["vm_nativeedge_02", "capabilities", "service_tag"] }
+      vmRef: { get_attribute: ["vm_nativeedge_02", "capabilities", "vm_name"] }
+      port: { get_input: proxy_port_02 }
+
+  node03_superpipe_data:
+    description: Data to reach the kubernetes endpoint over management interface
+    value:
+      serviceTag: { get_attribute: ["vm_nativeedge_03", "capabilities", "service_tag"] }
+      vmRef: { get_attribute: ["vm_nativeedge_03", "capabilities", "vm_name"] }
+      port: { get_input: proxy_port_03 }
+
+  node04_ip:
+    description: IP of k3s_server_04
+    value: { get_attribute: ["vm_node_04", "capabilities", "vm_public_ip"] }
+
+  node04_username:
+    description: Username of k3s_server_04
+    value: { get_input: vm_user_name }
+
+  node04_ssh_key_private:
+    description: SSH key secret name of k3s_server_04
+    value: { get_input: ssh_user_private_key_secret_name }
+
+  node05_ip:
+    description: IP of k3s_server_05
+    value: { get_attribute: ["vm_node_05", "capabilities", "vm_public_ip"] }
+
+  node05_username:
+    description: Username of k3s_server_05
+    value: { get_input: vm_user_name }
+
+  node05_ssh_key_private:
+    description: SSH key secret name of k3s_server_05
+    value: { get_input: ssh_user_private_key_secret_name }
+
+  node04_superpipe_data:
+    description: Data to reach the kubernetes endpoint over management interface
+    value:
+      serviceTag: { get_attribute: ["vm_nativeedge_04", "capabilities", "service_tag"] }
+      vmRef: { get_attribute: ["vm_nativeedge_04", "capabilities", "vm_name"] }
+      port: { get_input: proxy_port_04 }
+
+  node05_superpipe_data:
+    description: Data to reach the kubernetes endpoint over management interface
+    value:
+      serviceTag: { get_attribute: ["vm_nativeedge_05", "capabilities", "service_tag"] }
+      vmRef: { get_attribute: ["vm_nativeedge_05", "capabilities", "vm_name"] }
+      port: { get_input: proxy_port_05 }
+
