@@ -1,0 +1,1029 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  The blueprint creates VMs on ECE (single server with workload) And runs the k3s installation on the top of it.
+
+imports:
+  - nativeedge/types/types.yaml
+  - infrastructure/ned_vm/inputs_common.yaml
+  - infrastructure/ned_vm/single_node_inputs.yaml
+  - infrastructure/ned_vm/single_node_inputs_common.yaml
+  - tests/infrastructure/ned_vm/binary_single_node_definitions.yaml
+  - tests/infrastructure/ned_vm/single_node_definitions.yaml
+  - nvidia_drivers/inputs.yaml
+  - tests/nvidia_drivers/single_node_definitions.yaml
+  - application/install_longhorn_inputs.yaml
+  - application/inputs.yaml
+  - application/inputs_common.yaml
+  - tests/application/single_node_definitions.yaml
+  - outputs/single_node_outputs.yaml
+  - outputs/ned_single_node_outputs.yaml
+  - plugin:nativeedge-utilities-plugin
+labels:
+
+  csys-obj-type:
+    values:
+      - environment
+
+  target_environment:
+    values:
+      - ece
+
+  vendor:
+    values:
+      - cncf
+
+  solution:
+    values:
+      - k8s
+      - k3s
+
+  version:
+    values:
+      - 1.26.5+k3s1
+
+inputs:
+
+  artifact_configuration_secret_name:
+    type: secret_key
+    hidden: false
+    allow_update: false
+    display_label: Artifact Configuration Secret Name
+    description: >
+      Secret name containing details needed for binary image and
+
+      artifacts download.
+
+  binary_image_artifact_url:
+    type: string
+    hidden: true
+    display_label: Virtual Machine Image Repository URL
+    description: >
+      URL of the Image Binary that will be used to create
+
+      the Virtual Machine.
+    default: { get_secret: [{get_input: artifact_configuration_secret_name}, "binary_image_url"] }
+
+  binary_image_version:
+    type: string
+    hidden: true
+    display_label: Virtual Machine Image Version
+    description: >
+      Virtual Machine Image Version that will be used to create
+
+      the Virtual Machine.
+    default: { get_secret: [{get_input: artifact_configuration_secret_name}, "binary_image_version"] }
+
+  binary_image_artifact_username:
+    type: string
+    hidden: true
+    display_label: Virtual Machine Image Repository User Name
+    description: >
+      User name of the Repository of the Image Binary that will be
+
+      used to create the Virtual Machine.
+    default: { get_secret: [{get_input: artifact_configuration_secret_name}, "binary_image_access_user"] }
+
+  binary_image_artifact_access_token_secret_name:
+    type: list
+    hidden: true
+    display_label: Virtual Machine Image Repository Token Secret Name
+    description: >
+      Name of the secret storing the Token to the Repository of the
+
+      Image Binary that will be used to create the Virtual Machine.
+    default:
+      - { get_input: artifact_configuration_secret_name }
+      - binary_image_access_token
+
+  vm_user_name:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Deployment User
+    description: >
+      Name of the deployment user on the Virtual Machine.
+
+      Cannot contain leading or trailing spaces.
+    default: ubuntu
+    constraints:
+      - pattern: ^(?!\s)(?!.*\s$).*$
+        error_message: Cannot contain leading or trailing spaces.
+
+  ssh_user_private_key_secret_name:
+    type: secret_key
+    hidden: false
+    allow_update: false
+    display_label: SSH Private Key Secret Name
+    description: >
+      Name of the secret storing the SSH private key for the Virtual Machine.
+
+  ssh_user_public_key_secret_name:
+    type: secret_key
+    hidden: false
+    allow_update: false
+    display_label: SSH Public Key Secret Name
+    description: >
+      Name of the secret storing the SSH private key for the Virtual Machine.
+
+  hostname:
+    type: string
+    hidden: true
+    allow_update: false
+    display_label: Hostname
+    description: >
+      Hostname of the Virtual Machine
+
+      (an auto-generated suffix will also be added).
+
+      Cannot contain characters other than:
+
+      letters (a-z, A-Z), numbers (0-9), or hyphens (-).
+
+      Can be up to 63 characters long.
+    default: k3s
+
+  os_type:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: OS Type
+    description: The virtual machine Operating System.
+    default: UBUNTU22.04
+    constraints:
+      - valid_values:
+          - WIN10-32B
+          - WIN10-64B
+          - WIN11
+          - WIN2022-SERVER
+          - WIN2019-SERVER
+          - WIN-OTHERS
+          - UBUNTU16.04-32B
+          - UBUNTU16.04-64B
+          - UBUNTU18.04
+          - UBUNTU20.04
+          - UBUNTU20.10
+          - UBUNTU21.04
+          - UBUNTU21.10
+          - UBUNTU22.04
+          - UBUNTU22.10
+          - UBUNTU23.04
+          - CENTOS9
+          - CENTOS8
+          - DEB-LINUX12-32B
+          - DEB-LINUX12-64B
+          - DEB-LINUX11-32B
+          - DEB-LINUX11-64B
+          - DEB-LINUX10-32B
+          - DEB-LINUX10-64B
+          - FREEBSD13-32B
+          - FREEBSD13-64B
+          - FREEBSD12-32B
+          - FREEBSD12-64B
+          - FREEBSD11-32B
+          - FREEBSD11-64B
+          - ORCL-LINUX9
+          - ORCL-LINUX8
+          - RHEL9
+          - RHEL8
+          - SUSE-SLES15
+          - SUSE-SLED15
+          - SUSE-SLES12
+          - SUSE-SLED12
+          - LINUX-OTHERS
+          - OTHERS
+
+  vcpus:
+    type: integer
+    hidden: false
+    display_label: vCPUs
+    description: >
+      Number of virtual CPUs allocated to the Virtual Machine.
+
+      See more about sizing recommendations:
+
+      https://docs.k3s.io/installation/requirements
+    default: 2
+    constraints:
+      - greater_or_equal: 2
+
+  memory_size:
+    type: string
+    hidden: false
+    display_label: Memory Size
+    description: >
+      Memory size with unit [KB,MB,GB,TB,PB,EB,ZB,YB].
+
+      See more about sizing recommendations:
+
+      https://docs.k3s.io/installation/requirements
+    default: 4GB
+    constraints:
+      - pattern: \d+(\.\d+)?(KB|MB|GB|TB|PB|EB|ZB|YB)
+        error_message: >
+          Incorrect format.
+
+          Memory size must be followed by unit [KB,MB,GB,TB,PB,EB,ZB,YB].
+
+          Example: 4GB
+
+  os_disk_size:
+    type: string
+    hidden: false
+    display_label: OS Disk Size
+    description: >
+      Storage size with unit [KB,MB,GB,TB,PB,EB,ZB,YB].
+
+      See more about sizing recommendations:
+
+      https://docs.k3s.io/installation/requirements
+    default: 100GB
+    constraints:
+      - pattern: \d+(\.\d+)?(KB|MB|GB|TB|PB|EB|ZB|YB)
+        error_message: >
+          Incorrect format.
+
+          Disk size must be followed by unit [KB,MB,GB,TB,PB,EB,ZB,YB].
+
+          Example: 50GB
+
+  hardware_options.vTPM:
+    type: boolean
+    hidden: true
+    allow_update: false
+    display_label: Hardware Options - vTPM
+    description: >
+      Enable vTPM.
+
+      Required for For Windows 11 OS, optional for other OS.
+    default: false
+
+  hardware_options.secure_boot:
+    type: boolean
+    hidden: true
+    allow_update: false
+    display_label: Hardware Options - Secure Boot
+    description: >
+      Enable secure boot.
+
+      Required for For Windows 11 OS, optional for other OS.
+    default: false
+
+  hardware_options.firmware_type:
+    type: string
+    hidden: true
+    allow_update: false
+    display_label: Hardware Options - Firmware Type
+    description: >
+      The firmware type configured in the Virtual Machine.
+
+      For Windows 11 OS this must be UEFI.
+    default: BIOS
+    constraints:
+      - valid_values:
+          - BIOS
+          - UEFI
+
+  enable_management:
+    type: boolean
+    hidden: true
+    allow_update: false
+    display_label: Enable Management
+    description: >
+      Enable management which will create a tap interface for
+
+      the infrastructure segment.
+    default: true
+
+  network_settings:
+    type: list
+    hidden: true
+    display_label: Network Settings
+    description: List of VMDeployNetworkSettings.
+    default:
+      - name: VNIC1
+        segment_name: { get_input: segment_name }
+
+  usb:
+    type: list
+    hidden: true
+    allow_update: false
+    display_label: USB Devices List
+    description: >
+      A list of USB logical names to pass through to the Virtual Machine.
+
+      Valid values are "USB-1" to "USB-10"
+
+      Please make sure to select the USB port where USB device is connected.
+    required: false
+    default: []
+    item_type: string
+    constraints:
+      - valid_values:
+          - USB-1
+          - USB-2
+          - USB-3
+          - USB-4
+          - USB-5
+          - USB-6
+          - USB-7
+          - USB-8
+          - USB-9
+          - USB-10
+
+  serial_port:
+    type: list
+    hidden: true
+    allow_update: false
+    display_label: Serial Port
+    description: >
+      Serial port passthrough.
+
+      Please make sure to select the port where required device is connected.
+    required: false
+    default: []
+    item_type: dict
+    constraints:
+      - valid_values:
+          - port: COM-1
+          - port: COM-2
+          - port: COM-3
+          - port: COM-4
+          - port: COM-5
+          - port: COM-6
+          - port: COM-7
+          - port: COM-8
+          - port: COM-9
+          - port: COM-10
+
+  video:
+    type: list
+    hidden: true
+    allow_update: false
+    display_label: Video Passthrough
+    description: >
+      Video passthrough. A list of Video logical names (string).
+
+      E.g. 'Onboard Controller'
+    required: false
+    default: []
+
+  cloudinit:
+    type: dict
+    hidden: true
+    display_label: Cloud Init Config
+    description: >
+      Cloud init cloud config, can be obtained with
+
+      nativeedge.nodes.CloudInit.CloudConfig
+    required: false
+    default: {}
+
+  iso_files:
+    type: list
+    hidden: true
+    display_label: ISO Files
+    description: >
+      List ISO files (references to catalog) to be downloaded before
+
+      VM provisioning.
+    default: []
+    required: false
+
+  dhcp:
+    type: boolean
+    hidden: false
+    allow_update: false
+    display_label: DHCP
+    description: >
+      Enable to allow IP configuration to be taken from DHCP
+
+      instead of static IP settings.
+    default: true
+
+  dns:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: DNS Servers
+    description: List of DNS servers addresses.
+    required: false
+
+  gateway:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Gateway IP Address
+    description: IP Address of the Network Gateway.
+    required: false
+    constraints:
+      - pattern: ^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$|^$
+        error_message: >
+          Invalid format for IP Address.
+
+          Example: 172.16.0.1
+
+  segment_name:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Bridged Network Name
+    description: Name of the Bridged Network.
+    constraints:
+      - pattern: ^[a-zA-Z0-9_.-]+$
+        error_message: >
+          Must be letters (a-z, A-Z), numbers (0-9), underscores (_),
+
+          dots (.), or hyphens (-).
+
+  proxy_port_01:
+    type: string
+    display_label: 'Endpoint #1 Proxy Port'
+    description: Port on which the proxy should be created
+    default: 22
+    hidden: true
+
+  vm01_static_ip:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: VM 01 - Static IP and Mask Suffix
+    description: >
+      IP address and suffix. Example: 172.16.0.1/16.
+
+      Only required for static IP deployments, not for DHCP.
+    required: false
+    constraints:
+      - pattern: ^((25[0-5]|2[0-4]\d|1\d\d|\d{1,2})(\.(\d{1,3})){3}(\/(3[0-2]|[12]?\d))?|)$
+        error_message: >
+          Invalid format for IP Address in CIDR format.
+
+          Example: 172.16.0.1/16
+
+  vm01_disk:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: VM 01 - Endpoint Datastore Path
+    description: >
+      Deployment datastore path on target endpoint.
+
+      Available datastores can be retrieved from the endpoint screen.
+    default: /DataStore0
+    constraints:
+      - pattern: ^\/[a-zA-Z0-9]+$
+        error_message: >
+          Must start with slash (/), followed by alphanumeric characters.
+
+          Example: /DataStore0
+
+  vm01_gpu_passthrough:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: VM 01 - GPU Passthrough
+    description: >
+      A list of GPU logical names.
+
+      Please make sure to select the GPU that is currently available in your
+
+      Endpoint. A list of GPU logical names available for your endpoint can
+
+      be found in the NativeEdge UI under Endpoints / Hardware / Peripherals
+    required: false
+    default: []
+    item_type: string
+    constraints:
+      - valid_values:
+          - NVIDIA A2
+          - NVIDIA A10
+          - NVIDIA A30
+          - NVIDIA A40
+          - NVIDIA A100
+          - NVIDIA L4
+          - NVIDIA L40
+
+  driver_packages_url:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "drivers.tar.gz"] }
+    description: >
+      Solution example RPM can be dowloaded from https://example.com/solutions/example/2.0.0
+
+  build_essential_packages_url:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "build_essential_packages.tar.gz"] }
+    description: >
+      Solution example RPM can be dowloaded from https://example.com/solutions/example/2.0.0
+
+  driver_install_script:
+    type: string
+    hidden: false
+    display_label: Driver Installation Script
+    description: Driver Installation Script
+    default: NVIDIA-Linux-x86_64-535.154.05.run
+
+  driver_install_params:
+    type: string
+    hidden: false
+    display_label: Driver Installation Params
+    description: Driver Installation Params
+    allow_update: false
+    default: --silent
+
+  packages_list:
+    type: list
+    display_label: Additional Packages
+    description: List of packages needed for driver installation
+    required: false
+    hidden: false
+    default:
+      - ./libnvidia-container1_1.14.4-1_amd64.deb
+      - ./libnvidia-container-tools_1.14.4-1_amd64.deb
+      - ./nvidia-container-toolkit-base_1.14.4-1_amd64.deb
+      - ./nvidia-container-toolkit_1.14.4-1_amd64.deb
+
+  install_longhorn:
+    type: boolean
+    allow_update: false
+    display_label: Install Longhorn
+    description: Enable to install Longhorn storage support
+    default: false
+
+  k3s_version:
+    type: string
+    display_label: K3s Version
+    description: K3s version to install
+    default: v1.26.5+k3s1
+    constraints:
+      - valid_values:
+          - v1.26.5+k3s1
+          - v1.26.10+k3s2
+          - v1.27.8+k3s2
+          - v1.28.4+k3s2
+
+  taint_controlplane:
+    type: boolean
+    display_label: Taint Control Plane
+    description: If true, taints control plane (controlplane) nodes
+    hidden: true
+    default: false
+
+  disable_local_storage:
+    type: boolean
+    display_label: Disable Local Storage
+    description: If true, disables local storage
+    hidden: true
+    default: true
+
+  enable_nfs_storage:
+    type: boolean
+    display_label: NFS Storage Class
+    description: Enable to use NFS storage class
+    default: false
+
+  nfs_server:
+    type: string
+    display_label: NFS Server IP Address
+    description: 'IP address. Example: 171.16.0.1'
+    required: false
+    constraints:
+      - pattern: ^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$|^$
+        error_message: >
+          Invalid format for IP Address.
+
+          Example: 172.16.0.1
+
+  nfs_path:
+    type: string
+    display_label: NFS Path
+    description: >
+      Path to the NFS shared directory on the server.
+
+      Example: /nfs
+    required: false
+    constraints:
+      - pattern: ^/|(/[\w-]+)+$
+        error_message: >
+          Invalid format for NFS shared directory path.
+
+          Example: /nfs
+
+  nfs_sc_name:
+    type: string
+    display_label: NFS Storage Class
+    description: >
+      Name of the NFS storage class.
+
+      Example: nfs
+    default: nfs
+    constraints:
+      - pattern: ^[a-z]+(-[a-z]+)*$
+        error_message: >
+          Invalid format for NFS storage class name. Lowercase letters only.
+
+          Example: nfs
+      - min_length: 1
+      - max_length: 63
+
+  k3s_bin:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "k3s"] }
+    description: >
+      Solution example RPM can be dowloaded from https://example.com/solutions/example/2.0.0
+
+  k3s_images_tar_archive:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "k3s-airgap-images-amd64.tar"] }
+    description: >
+      Dependency library that can be downloaded from https://example.domain.com/libs/v2.0.0/library-example-2.0.0.tar.gz
+
+  longhorn_images_tar_archive:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "longhorn_images.tar.gz"] }
+    description: >
+      Dependency library that can be downloaded from https://example.domain.com/libs/v2.0.0/library-example-2.0.0.tar.gz
+
+  helm_tar_archive:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "helm-v3.12.1-linux-amd64.tar.gz"] }
+    description: >
+      Dependency library that can be downloaded from https://example.domain.com/libs/v2.0.0/library-example-2.0.0.tar.gz
+
+  nfs_subdir_external_provisioner_tar_archive:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "nfs-subdir-external-provisioner.tar"] }
+    description: >
+      Dependency library that can be downloaded from https://example.domain.com/libs/v2.0.0/library-example-2.0.0.tar.gz
+
+  nfs_common_packages_tar_archive:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "nfs_common_packages.tar.gz"] }
+    description: >
+      Dependency library that can be downloaded from https://example.domain.com/libs/v2.0.0/library-example-2.0.0.tar.gz
+
+  interface:
+    type: string
+    display_label: Interface Name
+    description: >
+      Name of interface
+
+      Some ubuntu 22.04 images use ens192 or ens160 interface
+    default: enp1s0
+
+  install_nvidia_device_plugin:
+    type: boolean
+    display_label: Install Nvidia Device Plugin
+    description: If true, Nvidia Device Plugin will be installed.
+    hidden: false
+    default: false
+
+  nvidia_image_tar_archive:
+    type: string
+    hidden: true
+    default: { concat: [{get_input: artifact_base_url}, "/", "nvidia_device_plugin.tar.gz"] }
+    description: >
+      Dependency library that can be downloaded from https://example.domain.com/libs/v2.0.0/library-example-2.0.0.tar.gz
+
+  environment_type:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Air-Gapped
+    description: >
+      Choose "airgapped" - all the binaries will be downloaded from the local
+
+      artifact store, or "internet_connected" for binaries that are available
+
+      on the Internet with a public URL.
+    default: internet_connected
+    constraints:
+      - valid_values:
+          - airgapped
+          - internet_connected
+
+  artifact_base_url:
+    type: string
+    hidden: true
+    display_label: Artifact Download Base URL
+    description: Artifact Download Base URL value from secret.
+    default: { get_secret: [{get_input: artifact_configuration_secret_name}, "artifact_base_url"] }
+
+  artifact_download_config_secret_name:
+    type: list
+    hidden: true
+    display_label: Artifact Download Config Secret Name
+    description: >
+      The secret name that contains the config used for download
+
+      framework to fetch artifacts.
+    default:
+      - { get_input: artifact_configuration_secret_name }
+      - artifact_curl_config
+
+node_templates:
+
+  binary_image:
+    type: nativeedge.nodes.ApplicationModule
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start:
+          implementation: tests/utilities/set_runtime_properties.py
+          executor: central_deployment_agent
+          inputs:
+            binary_details:
+              extra:
+                artifact_id: 4286a50d-1836-4dcf-b0b6-d205aa47541b
+        poststart:
+          implementation: tests/utilities/verify_inputs.py
+          executor: central_deployment_agent
+          inputs:
+            path: { get_input: binary_image_artifact_url }
+            username: { get_input: binary_image_artifact_username }
+            access_token: { get_secret: {get_input: binary_image_artifact_access_token_secret_name} }
+            version: { get_input: binary_image_version }
+
+  vm_nativeedge_01:
+    type: nativeedge.nodes.ApplicationModule
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start:
+          implementation: tests/utilities/set_runtime_properties.py
+          executor: central_deployment_agent
+          inputs:
+            capabilities:
+              vm_name: { concat: [{get_input: hostname}, "-node01"] }
+              service_tag: { get_environment_capability: ece_service_tag }
+              vm_username: { get_input: vm_user_name }
+              vm_ssh_key_secret_name: { get_input: ssh_user_private_key_secret_name }
+        poststart:
+          implementation: tests/utilities/verify_inputs.py
+          executor: central_deployment_agent
+          inputs:
+            vm_user_name: { get_input: vm_user_name }
+            key_public_secret_name: { get_input: ssh_user_public_key_secret_name }
+            key_private_secret_name: { get_input: ssh_user_private_key_secret_name }
+            service_tag: { get_environment_capability: ece_service_tag }
+            name: { concat: [{get_input: hostname}, "-node01"] }
+            image: { get_attribute: ["binary_image", "binary_details", "extra", "artifact_id"] }
+            os_type: { get_input: os_type }
+            cpu: { get_input: vcpus }
+            memory: { get_input: memory_size }
+            storage: { get_input: os_disk_size }
+            disk: { get_input: vm01_disk }
+            hardware_options.vTPM: { get_input: hardware_options.vTPM }
+            hardware_options.secure_boot: { get_input: hardware_options.secure_boot }
+            hardware_options.firmware_type: { get_input: hardware_options.firmware_type }
+            enable_management: { get_input: enable_management }
+            network_settings: { get_input: network_settings }
+            usb: { get_input: usb }
+            serial_port: { get_input: serial_port }
+            gpu: { get_input: vm01_gpu_passthrough }
+            video: { get_input: video }
+            netplan_cloudinit: { get_attribute: ["netplan_node_01", "template_resource_config"] }
+            cloudinit: { get_input: cloudinit }
+            iso_files: { get_input: iso_files }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: binary_image
+      - type: nativeedge.relationships.depends_on
+        target: netplan_node_01
+
+  netplan_node_01:
+    type: nativeedge.nodes.CloudInit.CloudConfig
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: infrastructure/ned_vm/scripts/prepare_resource_config.py
+          executor: central_deployment_agent
+          inputs:
+            template: infrastructure/ned_vm/templates/network_config.yaml
+            parameters:
+              use_dhcp: { get_input: dhcp }
+              static_ip: { get_input: vm01_static_ip }
+              gateway: { get_input: gateway }
+              dns: { get_input: dns }
+
+  vm_ssh_proxy_01:
+    type: nativeedge.nodes.ApplicationModule
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start:
+          implementation: tests/utilities/set_runtime_properties.py
+          executor: central_deployment_agent
+          inputs:
+            eo_proxy_url: k3s.host.test
+            eo_proxy_port: 9021
+        poststart:
+          implementation: tests/utilities/verify_inputs.py
+          executor: central_deployment_agent
+          inputs:
+            serviceTag: { get_attribute: ["vm_nativeedge_01", "capabilities", "service_tag"] }
+            vmRef: { get_attribute: ["vm_nativeedge_01", "capabilities", "vm_name"] }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_nativeedge_01
+
+  vm_node_01:
+    type: nativeedge.nodes.ApplicationModule
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start:
+          implementation: tests/utilities/set_runtime_properties.py
+          executor: central_deployment_agent
+          inputs:
+            capabilities:
+              vm_host: k3s.host.test
+              vm_ssh_port: 9021
+              vm_public_ip: 127.0.1.1
+              vm_ip: 127.0.0.1
+              network: 172.20.0.0
+              netmask: '21'
+              default_route: 172.20.0.0
+        poststart:
+          implementation: tests/utilities/verify_inputs.py
+          executor: central_deployment_agent
+          inputs:
+            host_string: { get_attribute: ["vm_ssh_proxy_01", "eo_proxy_url"] }
+            user: { get_attribute: ["vm_nativeedge_01", "capabilities", "vm_username"] }
+            key: { get_secret: {get_attribute: [vm_nativeedge_01, capabilities, vm_ssh_key_secret_name]} }
+            port: { get_attribute: ["vm_ssh_proxy_01", "eo_proxy_port"] }
+            VM_HOST: { get_attribute: ["vm_ssh_proxy_01", "eo_proxy_url"] }
+            VM_NAME: { get_attribute: ["vm_nativeedge_01", "capabilities", "vm_name"] }
+            VM_USERNAME: { get_attribute: ["vm_nativeedge_01", "capabilities", "vm_username"] }
+            VM_SSH_PORT: { get_attribute: ["vm_ssh_proxy_01", "eo_proxy_port"] }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_ssh_proxy_01
+
+  install_nvidia_drivers_01:
+    type: nativeedge.nodes.ApplicationModule
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start:
+          implementation: tests/utilities/set_runtime_properties.py
+          executor: central_deployment_agent
+          inputs:
+            installation_script: /tmp/installatin.sh
+            packages_folder: /tmp/nvidia
+        poststart:
+          implementation: tests/utilities/verify_inputs.py
+          executor: central_deployment_agent
+          inputs:
+            host_string: { get_attribute: ["vm_node_01", "capabilities", "vm_host"] }
+            user: { get_input: vm_user_name }
+            key: { get_secret: {get_input: ssh_user_private_key_secret_name} }
+            port: { get_attribute: ["vm_node_01", "capabilities", "vm_ssh_port"] }
+            DRIVER_PACKAGES_URL: { get_input: driver_packages_url }
+            DRIVER_INSTALL_SCRIPT: { get_input: driver_install_script }
+            GPU: { get_input: vm01_gpu_passthrough }
+            CURL_CONFIG: { concat: [\\\"\\\, {get_secret: {get_input: artifact_download_config_secret_name}}, \\\"\\\] }
+            SCRIPT_PARAMS: { get_input: driver_install_params }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_node_01
+
+  install_nvidia_container_runtime_01:
+    type: nativeedge.nodes.ApplicationModule
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start:
+          implementation: tests/utilities/verify_inputs.py
+          executor: central_deployment_agent
+          inputs:
+            PACKAGE_PATH: { get_attribute: ["install_nvidia_drivers_01", "packages_folder"] }
+            PACKAGE_NAME_0: { get_input: ["packages_list", 0] }
+            PACKAGE_NAME_1: { get_input: ["packages_list", 1] }
+            PACKAGE_NAME_2: { get_input: ["packages_list", 2] }
+            PACKAGE_NAME_3: { get_input: ["packages_list", 3] }
+            GPU: { get_input: vm01_gpu_passthrough }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: install_nvidia_drivers_01
+
+  k3s_install:
+    type: nativeedge.nodes.ApplicationModule
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start:
+          implementation: tests/utilities/set_runtime_properties.py
+          executor: central_deployment_agent
+          inputs:
+            capabilities:
+              cluster_endpoint: https://127.0.1.1:6443
+              longhorn: https://127.0.1.1:30080
+              short_term_sc: local-path
+              longhorn_long_term_sc: longhorn
+              cluster_k3s_token: token_secret_test
+              kubeconfig_secret_name: kubeconfig_secret_test
+              kubernetes_credentials: kubernetes_credentials
+        poststart:
+          implementation: tests/utilities/verify_inputs.py
+          executor: central_deployment_agent
+          inputs:
+            node1_ip: { get_attribute: ["vm_node_01", "capabilities", "vm_host"] }
+            node1_public_ip: { get_attribute: ["vm_node_01", "capabilities", "vm_public_ip"] }
+            node1_username: { get_input: vm_user_name }
+            node1_ssh_key_private: { get_input: ssh_user_private_key_secret_name }
+            node1_port: { get_attribute: ["vm_node_01", "capabilities", "vm_ssh_port"] }
+            k3s_version: { get_input: k3s_version }
+            disable_local_storage: { get_input: disable_local_storage }
+            install_longhorn: { get_input: install_longhorn }
+            longhorn_replicas_number: 1
+            enable_nfs_storage: { get_input: enable_nfs_storage }
+            nfs_server: { get_input: nfs_server }
+            nfs_path: { get_input: nfs_path }
+            nfs_sc_name: { get_input: nfs_sc_name }
+            helm_tar_archive: { get_input: helm_tar_archive }
+            nfs_common_packages_tar_archive: { get_input: nfs_common_packages_tar_archive }
+            nfs_subdir_external_provisioner_tar_archive: { get_input: nfs_subdir_external_provisioner_tar_archive }
+            k3s_bin: { get_input: k3s_bin }
+            k3s_images_tar_archive: { get_input: k3s_images_tar_archive }
+            longhorn_images_tar_archive: { get_input: longhorn_images_tar_archive }
+            environment_type: { get_input: environment_type }
+            artifact_download_config_secret_name: { get_input: artifact_download_config_secret_name }
+            install_nvidia_device_plugin: { get_input: install_nvidia_device_plugin }
+            nvidia_image_tar_archive: { get_input: nvidia_image_tar_archive }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: install_nvidia_container_runtime_01
+
+dsl_definitions:
+
+  driver_packages_tar: drivers.tar.gz
+
+  build_essential_packages_tar: build_essential_packages.tar.gz
+
+  k3s_bin: k3s
+
+  k3s_images_tar_archive: k3s-airgap-images-amd64.tar
+
+  longhorn_images_tar_archive: longhorn_images.tar.gz
+
+  helm_tar_archive: helm-v3.12.1-linux-amd64.tar.gz
+
+  nfs_subdir_external_provisioner_tar_archive: nfs-subdir-external-provisioner.tar
+
+  nfs_common_packages_tar_archive: nfs_common_packages.tar.gz
+
+  nvidia_image_tar_archive: nvidia_device_plugin.tar.gz
+capabilities:
+
+  cluster_endpoint:
+    description: The endpoint of K3S cluster
+    value: { get_attribute: ["k3s_install", "capabilities", "cluster_endpoint"] }
+
+  longhorn:
+    description: Longhorn endpoint
+    value: { get_attribute: ["k3s_install", "capabilities", "longhorn"] }
+
+  short_term_sc:
+    description: Short-term storage class name (local storage)
+    value: { get_attribute: ["k3s_install", "capabilities", "short_term_sc"] }
+
+  longhorn_long_term_sc:
+    description: Longhorn long-term storage class name (1 replica)
+    value: { get_attribute: ["k3s_install", "capabilities", "longhorn_long_term_sc"] }
+
+  nfs_long_term_sc:
+    description: Longhorn long-term storage class name (1 replica)
+    value: { get_attribute: ["k3s_install", "capabilities", "nfs_long_term_sc"] }
+
+  cluster_k3s_token:
+    description: Secret with token used for adding controlplane and worker nodes to cluster
+    value: { get_attribute: ["k3s_install", "capabilities", "cluster_k3s_token"] }
+
+  kubeconfig_secret_name:
+    description: Secret with kubeconfig file of the newly created cluster
+    value: { get_attribute: ["k3s_install", "capabilities", "kubeconfig_secret_name"] }
+
+  kubernetes_credentials:
+    description: Secret with kubernetes credentials of the newly created cluster
+    value: { get_attribute: ["k3s_install", "capabilities", "kubernetes_credentials"] }
+
+  node01_ip:
+    description: IP of k3s_server_01
+    value: { get_attribute: ["vm_node_01", "capabilities", "vm_public_ip"] }
+
+  node01_username:
+    description: Username of k3s_server_01
+    value: { get_input: vm_user_name }
+
+  node01_ssh_key_private:
+    description: SSH private key for k3s_server_01
+    value: { get_input: ssh_user_private_key_secret_name }
+
+  node01_superpipe_data:
+    description: Data to reach the kubernetes endpoint over management interface
+    value:
+      serviceTag: { get_attribute: ["vm_nativeedge_01", "capabilities", "service_tag"] }
+      vmRef: { get_attribute: ["vm_nativeedge_01", "capabilities", "vm_name"] }
+      port: { get_input: proxy_port_01 }
+
