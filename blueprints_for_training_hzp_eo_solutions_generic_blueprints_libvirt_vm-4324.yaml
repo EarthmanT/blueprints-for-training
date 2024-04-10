@@ -1,0 +1,441 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  Blueprint creates a VM with Cloud-Init on ECE
+
+imports:
+  - nativeedge/types/types.yaml
+  - vm/inputs.yaml
+  - vm/outputs.yaml
+  - vm/eo/definitions.yaml
+  - vm/external/definitions.yaml
+  - plugin:nativeedge-utilities-plugin
+  - plugin:nativeedge-libvirt-plugin
+labels:
+
+  csys-obj-type:
+    values:
+      - environment
+
+inputs:
+
+  ece_ip:
+    type: string
+    display_label: ECE IP
+    description: ECE IP taken from the ECE environment
+
+  ece_nativeedge_agent:
+    type: string
+    display_label: ECE Agent
+    description: >
+      ECE Agent Details (should be taken from the environment capability)
+
+  artifactory_url:
+    type: string
+    display_label: Artifactory Base URL
+    description: >
+      'Artifactory URL. Example: "https://amaas-eos-mw1.cec.lab.emc.com"'
+
+  artifactory_repository:
+    type: string
+    display_label: Artifactory Repository Name
+    description: Name of the Repository in the Artifactory
+
+  artifactory_api_key_secret:
+    type: string
+    display_label: Artifactory User API Key Secret Name
+    description: Name of the secret storing Artifactory User API Key
+
+  artifactory_details:
+    type: nativeedge.datatypes.Artifactory
+    display_label: Artifactory Details
+    description: Details used to connect to Artifactory
+    hidden: true
+    default:
+      url: { get_input: artifactory_url }
+      port: 443
+      repository: { get_input: artifactory_repository }
+      api_key: { get_input: artifactory_api_key_secret }
+
+  key_public_secret_name:
+    type: secret_key
+    display_label: VM SSH Public Key
+    description: SSH public key for the VM
+
+  key_private_secret_name:
+    type: secret_key
+    display_label: VM SSH Private Key
+    description: SSH private key for the VM
+
+  hostname:
+    type: string
+    display_label: Hostname
+    description: Hostname of the VM. VM name will be based on this too.
+    default: { get_sys: ["deployment", "name"] }
+
+  image_name:
+    type: string
+    display_label: QCOW2 Image Name
+    description: Name of the VM image file
+
+  images_local_path:
+    type: string
+    display_label: Local path to download images into
+    description: Some local path inside ECE to download images
+    default: /tmp
+
+  catalog_path:
+    type: string
+    display_label: Artifactory Image Location Path
+    description: Path of the VM Image in the Artifactory Repository
+
+  pool_resource_id:
+    type: string
+    display_label: Resource Pool ID
+    description: ID of the Resource Pool on ECE
+
+  network_id:
+    type: string
+    display_label: Network ID
+    description: ID of the Network on ECE
+
+  vcpu:
+    type: string
+    display_label: vCPUs
+    description: Number of virutal CPUs allocated to the VM
+    constraints:
+      - greater_or_equal: 4
+
+  memory_size:
+    type: string
+    display_label: Memory Size (kB)
+    description: Number of RAM kB allocated to the VM
+    constraints:
+      - greater_or_equal: 4194304
+
+  disk_size:
+    type: string
+    display_label: Disk Size [GB]
+    description: VM Disk Size in GB
+
+  bridge_name:
+    type: string
+    display_label: Bridge Interface Name
+    description: Name of the Bridge Interface
+    constraints:
+      - valid_values:
+          - dthnbr1
+          - dtnsbr1
+
+  network_interface:
+    type: string
+    display_label: Network Interface Name
+    description: Name of the Network Interface
+
+  vm_user_name:
+    type: string
+    display_label: VM User Name
+    description: Name of the user on the VM
+    default: ubuntu
+
+  dhcp:
+    type: boolean
+    display_label: Use DHCP
+    description: Switch used to enable DHCP for IP Address assignment
+    default: true
+
+  dns:
+    type: list
+    item_type: string
+    display_label: List of DNS servers
+    description: List of DNS servers
+
+  static_ip:
+    type: string
+    display_label: Static IP Address
+    description: >
+      Static IP Address that will be assigned to the VM. Example: 172.20.6.154/21
+    constraints:
+      - pattern: ^([0-9]{1,3}\.){3}[0-9]{1,3}(\/([0-9]|[1-2][0-9]|3[0-2]))?$
+
+  gateway:
+    type: string
+    display_label: Gateway IP Address
+    description: IP Address of the Network Gateway
+    constraints:
+      - pattern: ^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$
+
+  devices:
+    type: list
+    description: >
+      List of devices to attach (support for serial and usb) example: [{"type": "usb", "vendor_id": "0x1d6b", "product_id": "0x0002"}, {"type": "serial", "path": "/dev/ttyS1", "port": "1"}]
+capabilities:
+
+  vm_host:
+    description: VM Address
+    value: { get_attribute: ["vm", "ip"] }
+
+  vm_name:
+    description: VM Name
+    value: { get_attribute: ["vm", "resource_id"] }
+
+  vm_username:
+    description: VM User Name
+    value: { get_input: vm_user_name }
+
+  vm_ssh_key:
+    description: SSH Key to connect with VM
+    value: { get_secret: {get_input: key_private_secret_name} }
+
+  vm_ssh_port:
+    description: SSH Port to connect with VM
+    value: 22
+
+  ece_nativeedge_agent:
+    description: >
+      Name of the secret holding details of the ECE Agent taken from the ECE environment
+    value: { get_input: ece_nativeedge_agent }
+
+node_templates:
+
+  manager_init_network:
+    type: nativeedge.nodes.CloudInit.CloudConfig
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        precreate:
+          implementation: vm/eo/scripts/prepare_resource_config.py
+          executor: central_deployment_agent
+          inputs:
+            template: vm/eo/templates/network_config.yaml
+            parameters:
+              use_dhcp: { get_input: dhcp }
+              static_ip: { get_input: static_ip }
+              gateway: { get_input: gateway }
+              interface_name: { get_input: network_interface }
+              dns: { get_input: dns }
+              mac_addr: { get_attribute: ["prepare_vm", "vm_mac"] }
+        create:
+          inputs:
+            resource_config: { get_attribute: ["SELF", "template_resource_config"] }
+    relationships:
+      - target: prepare_vm
+        type: nativeedge.relationships.depends_on
+
+  cloud_init:
+    type: nativeedge.nodes.CloudInit.CloudConfig
+    properties:
+      resource_config:
+        users:
+          - name: { get_input: vm_user_name }
+            shell: /bin/bash
+            sudo:
+              - ALL=(ALL) NOPASSWD:ALL
+            groups: sudo
+            ssh-authorized-keys:
+              - { get_secret: {get_input: key_public_secret_name} }
+        growpart:
+          mode: auto
+          devices:
+            - /dev/sda1
+            - /
+          ignore_growroot_disabled: false
+
+  ece:
+    type: nativeedge.nodes.Compute
+    properties:
+      ip: { get_input: ece_ip }
+      agent_config:
+        install_method: none
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: vm/external/scripts/inject_agent.py
+          inputs:
+            nativeedge_agent: { get_input: ece_nativeedge_agent }
+          executor: central_deployment_agent
+
+  uuid:
+    type: nativeedge.nodes.PasswordSecret
+    properties:
+      length: 8
+      uppercase: 2
+      lowercase: 2
+      digits: 2
+      symbols: -1
+
+  prepare_vm:
+    type: nativeedge.nodes.WebServer
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: vm/external/scripts/prepare_image_file.py
+          inputs:
+            IMAGE_NAME: { get_input: image_name }
+            ARTIFACTORY_URL: { get_input: ["artifactory_details", "url"] }
+            ARTIFACTORY_REPOSITORY: { get_input: ["artifactory_details", "repository"] }
+            ARTIFACTORY_CATALOG_PATH: { get_input: catalog_path }
+            ARTIFACTORY_API_KEY: { get_secret: {get_input: [artifactory_details, api_key]} }
+            IMAGES_LOCAL_PATH: { get_input: images_local_path }
+        start:
+          implementation: vm/external/scripts/prepare_vm.sh
+          inputs:
+            IMAGE_PATH: { get_attribute: ["SELF", "image_path"] }
+            VM_HOSTNAME: { get_input: hostname }
+            DISK_SIZE: { get_input: disk_size }
+        stop:
+          implementation: vm/external/scripts/cleanup.py
+    relationships:
+      - target: ece
+        type: nativeedge.relationships.contained_in
+
+  vm_pool:
+    type: nativeedge.nodes.libvirt.pool
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          inputs:
+            resource_id: { get_input: pool_resource_id }
+            use_external_resource: true
+    relationships:
+      - target: ece
+        type: nativeedge.relationships.contained_in
+
+  cloudinit_volume:
+    type: nativeedge.nodes.libvirt.volume
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          inputs:
+            params:
+              pool: { get_attribute: ["vm_pool", "resource_id"] }
+              capacity: 1
+              allocation: 1
+    relationships:
+      - target: ece
+        type: nativeedge.relationships.contained_in
+      - target: vm_pool
+        type: nativeedge.relationships.depends_on
+
+  cloud_init_image:
+    type: nativeedge.nodes.libvirt.ISO9660
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          inputs:
+            params:
+              pool: { get_attribute: ["vm_pool", "resource_id"] }
+              volume: { get_attribute: ["cloudinit_volume", "resource_id"] }
+              vol_ident: cidata
+              files:
+                user-data: { get_attribute: ["cloud_init", "cloud_config"] }
+                meta-data: { get_attribute: ["prepare_vm", "vm_name"] }
+                network-config: { get_attribute: ["manager_init_network", "cloud_config"] }
+    relationships:
+      - target: ece
+        type: nativeedge.relationships.contained_in
+      - target: cloudinit_volume
+        type: nativeedge.relationships.depends_on
+      - target: cloud_init
+        type: nativeedge.relationships.depends_on
+      - target: manager_init_network
+        type: nativeedge.relationships.depends_on
+
+  vm_network:
+    type: nativeedge.nodes.libvirt.network
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          inputs:
+            resource_id: { get_input: network_id }
+            use_external_resource: true
+    relationships:
+      - target: ece
+        type: nativeedge.relationships.contained_in
+      - target: prepare_vm
+        type: nativeedge.relationships.depends_on
+
+  vm:
+    type: nativeedge.nodes.libvirt.domain
+    properties:
+      agent_config:
+        install_method: none
+      params:
+        name: { concat: [{get_input: hostname}, "-", {get_secret: {get_attribute: [uuid, secret_name]}}] }
+        wait_for_ip: false
+        domain_type: kvm
+        vcpu: { get_input: vcpu }
+        memory_size: { get_input: memory_size }
+        networks:
+          - network: { get_attribute: ["vm_network", "resource_id"] }
+            dev: vnet0
+            mac: { get_attribute: ["prepare_vm", "vm_mac"] }
+            type: virtio
+        disks:
+          - bus: scsi
+            dev: sda
+            file: { get_attribute: ["prepare_vm", "vm_image"] }
+            type: qcow2
+          - bus: scsi
+            dev: sdb
+            file: { get_attribute: ["cloudinit_volume", "params", "path"] }
+            type: raw
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        configure:
+          inputs:
+            template_resource: vm/external/templates/vm.xml
+            params: { get_property: ["SELF", "params"] }
+        poststart:
+          implementation: vm/external/scripts/get_ip.py
+          inputs:
+            BRIDGE_INTERFACE: { get_input: bridge_name }
+            MAC_ADDRESS: { get_attribute: ["prepare_vm", "vm_mac"] }
+            PING_TIMEOUT: 0.05
+            USE_DHCP: true
+            STATIC_IP: ''
+    relationships:
+      - target: ece
+        type: nativeedge.relationships.contained_in
+      - target: prepare_vm
+        type: nativeedge.relationships.depends_on
+      - target: cloud_init_image
+        type: nativeedge.relationships.depends_on
+      - target: vm_network
+        type: nativeedge.relationships.depends_on
+      - target: uuid
+        type: nativeedge.relationships.depends_on
+data_types:
+
+  nativeedge.datatypes.Artifactory:
+    properties:
+      url:
+        type: string
+        description: >
+          'Artifactory URL. Example: "https://amaas-eos-mw1.cec.lab.emc.com"'
+        required: true
+      port:
+        type: integer
+        description: Artifactory Port
+        required: false
+        default: 443
+      repository:
+        type: string
+        description: Artifactory Repository Name
+        required: true
+      username:
+        type: string
+        description: Artifactory User Name
+        required: false
+      password:
+        type: string
+        description: Artifactory User Password
+        required: false
+      api_key:
+        type: string
+        description: Artifactory User API Key
+        required: false
+      verify_ssl:
+        type: string
+        description: Artifactory Verify SSL Switch
+        required: false
+

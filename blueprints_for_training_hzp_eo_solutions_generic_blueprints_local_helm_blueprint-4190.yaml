@@ -1,0 +1,93 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  Generic bluprint to handle application installation using helm
+
+imports:
+  - nativeedge/types/types.yaml
+  - app/inputs.yaml
+  - app/external/definitions.yaml
+  - plugin:nativeedge-helm-plugin
+labels:
+
+  csys-obj-type:
+    values:
+      - service
+
+node_templates:
+
+  helm_install:
+    type: nativeedge.nodes.helm.Binary
+    properties:
+      use_existing_resource: false
+      installation_source: { get_input: helm_installation_source }
+
+  helm_release:
+    type: nativeedge.nodes.helm.Release
+    properties:
+      client_config:
+        configuration:
+          file_content: { get_secret: {get_input: kubeconfig_secret_name} }
+      resource_config:
+        name: { get_input: release_name }
+        chart: { get_input: chart_path }
+        flags: { get_input: flags }
+        values_file: { get_input: values_path }
+        set_values: { get_input: values_set }
+    relationships:
+      - target: helm_install
+        type: nativeedge.relationships.helm.run_on_host
+
+inputs:
+
+  release_name:
+    display_label: Release Name
+    description: >
+      Name of the helm release to install
+    type: string
+
+  chart_path:
+    description: >
+      Chart path relative inside the blueprint.
+    display_label: Chart Path
+    type: string
+
+  values_path:
+    description: >
+      Values file path relative inside the blueprint.
+    display_label: Values Path
+    required: false
+    type: string
+    default: ''
+
+  flags:
+    description: >
+      set of flags to pass to release install. - name: namespace
+        value: some_ns
+    display_label: Flags list
+    type: list
+    required: false
+    default: []
+
+  values_set:
+    description: >
+      set of values to pass to release install. - name: some_var
+        value: some_val
+    display_label: Values list
+    type: list
+    required: false
+    default: []
+
+  helm_installation_source:
+    display_label: Helm Installation Source
+    description: >
+      Helm download link.
+    type: string
+    default: https://get.helm.sh/helm-v3.9.0-linux-amd64.tar.gz
+
+  kubeconfig_secret_name:
+    display_label: Kubeconfig secret name
+    description: >
+      Kubeconfig stored secret name.
+    type: string
+

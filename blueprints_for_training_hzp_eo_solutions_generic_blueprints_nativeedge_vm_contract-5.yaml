@@ -1,0 +1,336 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  Blueprint creates a VM on ECE using Native Edge Plugin
+
+imports:
+  - nativeedge/types/types.yaml
+  - vm/inputs.yaml
+  - vm/outputs.yaml
+  - vm/contract.yaml
+  - plugin:nativeedge-utilities-plugin
+labels:
+
+  csys-obj-type:
+    values:
+      - environment
+blueprint_labels:
+
+  env:
+    values:
+      - NED
+
+  hidden:
+    values:
+      - 'true'
+
+inputs:
+
+  vm_user_name:
+    type: string
+    display_label: VM User Name
+    description: Name of the user to be configured on the VM
+    required: true
+    default: vm_user
+
+  key_public_secret_name:
+    type: secret_key
+    display_label: VM SSH Public Key Secret Name
+    description: Name of the secret storing SSH public key for the VM
+
+  key_private_secret_name:
+    type: secret_key
+    display_label: VM SSH Private Key Secret Name
+    description: Name of the secret storing SSH private key for the VM
+
+  service_tag:
+    type: string
+    display_label: ECE Service Tag
+    description: Service Tag of the ECE where VM will be created.
+
+  name:
+    type: string
+    display_label: VM Name
+    description: VM name
+
+  image:
+    type: string
+    display_label: Image ID
+    description: Reference to the Image ID from Artifact Catalog
+
+  os_type:
+    type: string
+    display_label: OS Type
+    description: Type of OS running on a VM
+    constraints:
+      - valid_values:
+          - WIN10-32B
+          - WIN10-64B
+          - WIN11
+          - WIN2022-SERVER
+          - WIN2019-SERVER
+          - WIN-OTHERS
+          - UBUNTU16.04-32B
+          - UBUNTU16.04-64B
+          - UBUNTU18.04
+          - UBUNTU20.04
+          - UBUNTU20.10
+          - UBUNTU21.04
+          - UBUNTU21.10
+          - UBUNTU22.04
+          - UBUNTU22.10
+          - UBUNTU23.04
+          - CENTOS9
+          - CENTOS8
+          - DEB-LINUX12-32B
+          - DEB-LINUX12-64B
+          - DEB-LINUX11-32B
+          - DEB-LINUX11-64B
+          - DEB-LINUX10-32B
+          - DEB-LINUX10-64B
+          - FREEBSD13-32B
+          - FREEBSD13-64B
+          - FREEBSD12-32B
+          - FREEBSD12-64B
+          - FREEBSD11-32B
+          - FREEBSD11-64B
+          - ORCL-LINUX9
+          - ORCL-LINUX8
+          - RHEL9
+          - RHEL8
+          - SUSE-SLES15
+          - SUSE-SLED15
+          - SUSE-SLES12
+          - SUSE-SLED12
+          - LINUX-OTHERS
+          - OTHERS
+
+  cpu:
+    type: integer
+    display_label: vCPUs
+    description: Number of CPUs
+    default: 2
+
+  memory:
+    type: string
+    display_label: Memory Size
+    description: Memory with unit [KB,MB,GB,TB,PB,EB,ZB,YB]
+    default: 2GB
+
+  storage:
+    type: string
+    display_label: Storage Size
+    description: Storage size with unit [KB,MB,GB,TB,PB,EB,ZB,YB]
+    default: 4GB
+
+  disk:
+    type: string
+    display_label: Disk Path
+    description: >
+      Deployment datastore path on target ECE. Available datastores can be retrieved from inventory service
+    default: /DataStore0
+
+  hardware_options.vTPM:
+    type: boolean
+    display_label: Hardware Options - vTPM
+    description: >
+      Enable vTPM. Required for Win11 OS, optional for other OS
+    default: false
+    required: false
+
+  hardware_options.secure_boot:
+    type: boolean
+    display_label: Hardware Options - Secure Boot
+    description: >
+      Enable secure boot. Required for Win11 OS, optional for other OS
+    default: false
+    required: false
+
+  hardware_options.firmware_type:
+    type: string
+    display_label: Hardware Options - Firmware Type
+    description: Firmware type. For Win11 OS, it must be UEFI
+    default: BIOS
+    required: false
+    constraints:
+      - valid_values:
+          - BIOS
+          - UEFI
+
+  enable_management:
+    type: boolean
+    display_label: Enable Management
+    description: >
+      Enable management which will create tap interface for infrastructure segment
+    default: true
+    required: false
+
+  network_settings:
+    type: list
+    display_label: Network Settings
+    description: List of VMDeployNetworkSettings
+    required: false
+
+  usb:
+    type: list
+    display_label: USB Passthrough
+    description: >
+      USB passthrough. A list of USB logical names (string). USB-1 to USB-10
+    required: false
+    default: []
+
+  serial_port:
+    type: list
+    display_label: Serial Port
+    description: >
+      Serial port passthrough. A list of serial port object (VMDeploySerialPort)
+    required: false
+    default: []
+
+  gpu:
+    type: list
+    display_label: GPU Passthrough
+    description: >
+      GPU passthrough. A list of GPU logical names (string). NVIDIA_A2-Slot1 to NVIDIA_A2-Slot8, NVIDIA_A30-Slot1 to NVIDIA_A30-Slot8
+    required: false
+    default: []
+
+  video:
+    type: list
+    display_label: Video Passthrough
+    description: >
+      Video passthrough. A list of Video logical names (string). E.g. 'Onboard Controller'
+    required: false
+    default: []
+
+  netplan_cloudinit:
+    type: dict
+    display_label: Netplan Cloud Init
+    description: >
+      Network configuration to be set during Cloud-Init execution
+    default:
+      network:
+        version: 2
+        renderer: networkd
+        ethernets:
+          enp1s0:
+            dhcp4: true
+          enp2s0:
+            dhcp4: true
+            dhcp4-overrides:
+              use-routes: false
+
+  cloudinit:
+    type: dict
+    display_label: Cloud Init Config
+    description: >
+      Cloud init cloud config, can be obtained with nativeedge.nodes.CloudInit.CloudConfig
+    required: false
+    default: {}
+
+  iso_files:
+    type: list
+    display_label: ISO Files
+    description: >
+      List ISO files (references to catalog) to be downloaded before VM provisioning
+    required: false
+capabilities:
+
+  vm_name:
+    description: VM Name
+    value: { get_attribute: ["vm", "vm_details", "name"] }
+
+  service_tag:
+    description: Service Tag
+    value: { get_property: ["vm", "vm_config", "location"] }
+
+  vm_username:
+    description: VM User Name
+    value: { get_input: vm_user_name }
+
+  vm_ssh_key_secret_name:
+    description: SSH Private Key Secret Name
+    value: { get_input: key_private_secret_name }
+node_types:
+
+  contract.nodes.template.NativeEdgeVM:
+    properties:
+      vm_config:
+        type: dict
+
+node_templates:
+
+  cloudinit:
+    type: nativeedge.nodes.CloudInit.CloudConfig
+    properties:
+      resource_config:
+        runcmd:
+          - netplan apply
+          - systemctl restart sshd
+        write_files:
+          - content: { get_attribute: ["SELF", "netplan_encoded"] }
+            encoding: b64
+            path: /etc/netplan/50-cloud-init.yaml
+          - content: >
+              ClientAliveInterval 1800
+
+              ClientAliveCountMax 3
+            path: /etc/ssh/sshd_config
+            append: true
+        disable_root_opts: >
+          no-port-forwarding,no-agent-forwarding,no-X11-forwarding
+        disable_root: false
+        ssh_authorized_keys:
+          - { get_secret: {get_input: key_public_secret_name} }
+        users:
+          - name: { get_input: vm_user_name }
+            sudo:
+              - ALL=(ALL) NOPASSWD:ALL
+            groups: users, admin
+            shell: /bin/bash
+            ssh_authorized_keys:
+              - { get_secret: {get_input: key_public_secret_name} }
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        precreate:
+          implementation: vm/scripts/prepare_netplan.py
+          executor: central_deployment_agent
+          inputs:
+            netplan_input: { get_input: netplan_cloudinit }
+        create:
+          inputs:
+            resource_config:
+              merge:
+                - { get_attribute: ["SELF", "resource_config"] }
+                - { get_input: cloudinit }
+
+  vm:
+    type: contract.nodes.template.NativeEdgeVM
+    properties:
+      vm_config:
+        location: { get_input: service_tag }
+        name: { get_input: name }
+        image: { get_input: image }
+        os_type: { get_input: os_type }
+        resource_constraints:
+          cpu: { get_input: cpu }
+          memory: { get_input: memory }
+          storage: { get_input: storage }
+          disk: { get_input: disk }
+        hardware_options:
+          vTPM: { get_input: hardware_options.vTPM }
+          secure_boot: { get_input: hardware_options.secure_boot }
+          firmware_type: { get_input: hardware_options.firmware_type }
+        enable_management: { get_input: enable_management }
+        network_settings: { get_input: network_settings }
+        ports:
+          usb: { get_input: usb }
+          serial_port: { get_input: serial_port }
+          gpu: { get_input: gpu }
+          video: { get_input: video }
+        cloudinit: { get_attribute: ["cloudinit", "cloud_config"] }
+        iso_files: { get_input: iso_files }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: cloudinit
+
