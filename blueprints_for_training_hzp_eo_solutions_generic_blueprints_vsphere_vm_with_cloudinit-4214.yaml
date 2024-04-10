@@ -1,0 +1,727 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  Blueprint creates a VM with Cloud-Init in vSphere environment
+
+imports:
+  - nativeedge/types/types.yaml
+  - vm/inputs.yaml
+  - vm/outputs.yaml
+  - vm/eo/definitions.yaml
+  - vm/external/definitions.yaml
+  - vm/external/cloudinit_iso.yaml
+  - plugin:nativeedge-utilities-plugin
+  - plugin:nativeedge-vsphere-plugin?version= >=2.20.5
+workflows:
+
+  restart:
+    mapping: default_workflows.nativeedge.plugins.workflows.restart
+    is_cascading: false
+    availability_rules:
+      node_instances_active:
+        - all
+        - partial
+    parameters:
+      stop_parms:
+        default: {}
+      start_parms:
+        default: {}
+      run_by_dependency_order:
+        default: true
+      type_names:
+        type: list
+        item_type: node_type
+        default: []
+      node_ids:
+        type: list
+        item_type: node_id
+        default:
+          - vm_info
+      node_instance_ids:
+        type: list
+        item_type: node_instance
+        default: []
+labels:
+
+  csys-obj-type:
+    values:
+      - environment
+blueprint_labels:
+
+  env:
+    values:
+      - vsphere
+
+  hidden:
+    values:
+      - 'true'
+
+inputs:
+
+  vsphere_secret_name:
+    type: secret_key
+    display_label: vSphere secret name
+    description: >
+      Name of the secret storing vSphere credentials used for connection
+
+  template_name:
+    type: string
+    display_label: VM Template Name
+    description: >
+      Name of the VM Template in vSphere to clone the VM from. Cannot contain leading or trailing spaces.
+    constraints:
+      - pattern: ^(?!\s)(?!.*\s$).*$
+
+  hostname:
+    type: string
+    display_label: VM Hostname
+    description: >
+      Hostname of the VM. VM Name will be based on this too, with suffix added. Cannot contain "_".
+
+  vm_user_name:
+    type: string
+    display_label: VM User Name
+    description: >
+      Name of the user to be configured on the VM. Cannot contain leading or trailing spaces.
+    required: true
+    default: ubuntu
+    constraints:
+      - pattern: ^(?!\s)(?!.*\s$).*$
+
+  key_private_secret_name:
+    type: secret_key
+    display_label: SSH User Private Key Secret Name
+    description: Name of the secret storing SSH private key for the VM
+
+  key_public_secret_name:
+    type: secret_key
+    display_label: SSH User Public Key Secret Name
+    description: Name of the secret storing SSH public key for the VM
+
+  allowed_esxi_hosts:
+    type: list
+    display_label: Allowed ESXi Host
+    description: >
+      Names of the ESXi hosts on which VM should be placed. Mandatory for USB passthrough.
+    default: []
+
+  resource_pool_name:
+    type: string
+    display_label: Resource Pool
+    description: >
+      Name of the Resource Pool in vSphere. Cannot contain leading or trailing spaces.
+    constraints:
+      - pattern: ^(?!\s)(?!.*\s$).*$
+
+  vm_folder_name:
+    type: string
+    display_label: VM Folder
+    description: >
+      Name of the folder in vSphere to deploy a VM inside. Cannot contain leading or trailing spaces.
+    constraints:
+      - pattern: ^(?!\s)(?!.*\s$).*$
+
+  datastore_name:
+    type: string
+    display_label: Datastore Name
+    description: >
+      Name of the Datastore to use with the VM. Cannot contain leading or trailing spaces.
+    constraints:
+      - pattern: ^(?!\s)(?!.*\s$).*$
+
+  vcpu:
+    type: integer
+    display_label: vCPUs
+    description: Number of virtual CPUs allocated to the VM
+
+  memory_size:
+    type: integer
+    display_label: Memory [MB]
+    description: Number of RAM MB allocated to the VM
+
+  os_disk_size:
+    type: integer
+    display_label: OS Disk [GB]
+    description: Main OS disk size in GB
+    constraints:
+      - greater_or_equal: 10
+
+  disk_provisioning:
+    type: string
+    display_label: OS Disk Provisioning Type
+    description: OS Disk provisioning type for VM in vSphere
+    constraints:
+      - valid_values:
+          - thickLazyZeroed
+          - thickEagerZeroed
+          - thin
+
+  storage_disk_size:
+    type: integer
+    display_label: Storage Disk [GB]
+    description: Additional disks size in GB
+
+  disks_count:
+    type: integer
+    display_label: Storage Disks count
+    description: Number of additional disks attached to the VM
+    default: 0
+    constraints:
+      - in_range:
+          - 0
+          - 1
+
+  storage_disk_provisioning:
+    type: string
+    display_label: Storage Disk Provisioning Type
+    description: Storage Disk provisioning type for VM in vSphere
+    default: thin
+    constraints:
+      - valid_values:
+          - thick
+          - thin
+
+  storage_disk_thin_provisioning:
+    type: dict
+    hidden: true
+    display_label: Storage Disk Thin Provisioned
+    description: Is Storage Disk Thin Provisioned
+    default:
+      thick: false
+      thin: true
+
+  networking:
+    type: dict
+    display_label: Network Mappings
+    description: >
+      Array of key-value details of OVF network setup, e.g:
+        domain: example.com
+        dns_servers: ['8.8.8.8']
+        connect_networks:
+          - name: example_management_network
+            management: true
+            switch_distributed: false
+            use_dhcp: true
+          - name: example_external_network
+            external: true
+            switch_distributed: true
+            use_dhcp: false
+            network: 10.0.0.0/24
+            gateway: 10.0.0.1
+            ip: 10.0.0.2
+
+  vm_advanced_parameters:
+    type: dict
+    display_label: VM Advanced Parameters
+    description: Object with advanced parameters for vSphere VM
+    default: {}
+
+  pci_devices:
+    type: list
+    display_label: PCI Devices List
+    description: >
+      List of PCI Devices that will be created and attached to the VM. Should be a list of objects representing PCI Devices. Objects of type: nativeedge.datatypes.vsphere.PCIDevice Example:
+        - device_name: <first_device>
+        - device_name: <second_device>
+    default: []
+
+  usb_devices:
+    type: list
+    display_label: USB Devices List
+    description: >
+      List of USB Devices that will be created and attached to the VM. Should be a list of objects representing USB Devices. Objects of type: nativeedge.datatypes.vsphere.USBDevice Example:
+        - device_name: <first_device>
+          controller_type: usb3
+        - device_name: <second_device>
+          controller_type: usb2
+    default: []
+
+  serial_ports:
+    type: list
+    display_label: Serial Ports List
+    description: >
+      List of Serial Ports that will be created and attached to the VM. Should be a list of objects representing Serial Ports. Objects of type: nativeedge.datatypes.vsphere.SerialPort Example:
+        - device_name: <first_device>
+        - device_name: <second_device>
+    default: []
+
+  nics:
+    type: list
+    display_label: NICs Devices List
+    description: >
+      List of NIC Devices that will be created and attached to the VM. Should be a list of objects representing NIC Devices. Objects of type: nativeedge.datatypes.vsphere.NIC Example:
+        - network_name: net1
+          external_network_distributed: true
+          adapter_type: E1000
+          network_management: true
+          external_network: true
+          dhcp_network: false
+          network_cidr: 192.168.0.1/24
+          gateway: 192.168.0.1
+          ip: 192.168.0.2
+        - network_name: net1
+          external_network_distributed: true
+          adapter_type: E1000
+          network_management: true
+          external_network: true
+          dhcp_network: true
+    default: []
+
+  boot_order:
+    type: list
+    display_label: Boot order
+    description: >
+      Boot order of vm. If empty no changes will be made.
+    default: []
+
+  disk_keys:
+    type: list
+    display_label: Boot order disk keys
+    description: >
+      Disk keys to place into boot order. If empty, all device keys will be placed.
+    default: []
+
+  ethernet_keys:
+    type: list
+    display_label: Boot order ethernet keys
+    description: >
+      Ethernet keys to place into boot order. If empty, all device keys will be placed.
+    default: []
+
+  cpu_hot_add:
+    type: boolean
+    display_label: CPU Hot Add Enabled
+    description: Enable CPU Hot Add for VM
+    default: true
+
+  cpu_hot_remove:
+    type: boolean
+    display_label: CPU Hot Remove Enabled
+    description: Enable CPU Hot Remove for VM
+    default: true
+
+  memory_hot_add:
+    type: boolean
+    display_label: Memory Hot Add Enabled
+    description: Enable Memory Hot Add for VM
+    default: true
+
+  pci_turn_off_vm:
+    type: boolean
+    display_label: PCI turn on vm after attach
+    description: PCI turn off/on vm
+    default: true
+
+  cloudinit:
+    type: dict
+    display_label: Cloud Init Config
+    description: >
+      Cloud init cloud config, can be obtained with nativeedge.nodes.CloudInit.CloudConfig
+    required: false
+    default: {}
+capabilities:
+
+  vm_host:
+    description: VM Host
+    value: { get_attribute: ["vm_info", "ip"] }
+
+  vm_public_ip:
+    description: VM IP Address
+    value: { get_attribute: ["vm_info", "ip"] }
+
+  vm_name:
+    description: VM Name
+    value: { get_attribute: ["vm_info", "name"] }
+
+  vm_username:
+    description: VM User Name
+    value: { get_input: vm_user_name }
+
+  vm_ssh_port:
+    description: SSH Port to connect with VM
+    value: 22
+
+  vm_ssh_key_secret_name:
+    description: SSH Private Key Secret Name
+    value: { get_input: key_private_secret_name }
+
+node_templates:
+
+  cloud_init_meta:
+    type: nativeedge.nodes.CloudInit.CloudConfig
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          inputs:
+            resource_config:
+              instance-id: { concat: [{get_sys: [deployment, name]}, "_cloudinit"] }
+              hostname: { get_input: hostname }
+
+  cloud_init_user:
+    type: nativeedge.nodes.CloudInit.CloudConfig
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          inputs:
+            resource_config:
+              hostname: { get_input: hostname }
+              users:
+                - name: { get_input: vm_user_name }
+                  shell: /bin/bash
+                  sudo:
+                    - ALL=(ALL) NOPASSWD:ALL
+                  groups: sudo
+                  ssh-authorized-keys:
+                    - { get_secret: {get_input: key_public_secret_name} }
+              runcmd:
+                - systemctl restart sshd
+              write_files:
+                - content: >
+                    ClientAliveInterval 1800
+
+                    ClientAliveCountMax 3
+                  path: /etc/ssh/sshd_config
+                  append: true
+        configure:
+          inputs:
+            resource_config:
+              merge:
+                - { get_attribute: ["SELF", "resource_config"] }
+                - { get_input: cloudinit }
+
+  datastore:
+    type: nativeedge.nodes.vsphere.Datastore
+    properties:
+      use_external_resource: true
+      name: { get_input: datastore_name }
+      connection_config:
+        username: { get_secret: [{get_input: vsphere_secret_name}, "username"] }
+        password: { get_secret: [{get_input: vsphere_secret_name}, "password"] }
+        host: { get_secret: [{get_input: vsphere_secret_name}, "host"] }
+        port: { get_secret: [{get_input: vsphere_secret_name}, "port"] }
+        datacenter_name: { get_secret: [{get_input: vsphere_secret_name}, "datacenter_name"] }
+        resource_pool_name: { get_input: resource_pool_name }
+        auto_placement: { get_secret: [{get_input: vsphere_secret_name}, "auto_placement"] }
+        allow_insecure: { get_secret: [{get_input: vsphere_secret_name}, "allow_insecure"] }
+        certificate_data: { get_secret: [{get_input: vsphere_secret_name}, "certificate_data"] }
+
+  vm:
+    type: nativeedge.nodes.vsphere.Server
+    properties:
+      wait_ip: false
+      connection_config:
+        username: { get_secret: [{get_input: vsphere_secret_name}, "username"] }
+        password: { get_secret: [{get_input: vsphere_secret_name}, "password"] }
+        host: { get_secret: [{get_input: vsphere_secret_name}, "host"] }
+        port: { get_secret: [{get_input: vsphere_secret_name}, "port"] }
+        datacenter_name: { get_secret: [{get_input: vsphere_secret_name}, "datacenter_name"] }
+        resource_pool_name: { get_input: resource_pool_name }
+        auto_placement: { get_secret: [{get_input: vsphere_secret_name}, "auto_placement"] }
+        allow_insecure: { get_secret: [{get_input: vsphere_secret_name}, "allow_insecure"] }
+        certificate_data: { get_secret: [{get_input: vsphere_secret_name}, "certificate_data"] }
+      agent_config:
+        install_method: none
+      allowed_hosts: { get_input: allowed_esxi_hosts }
+      allowed_datastores:
+        - { get_input: datastore_name }
+      cdrom_image: { get_attribute: ["cdrom_iso", "storage_image"] }
+      boot_order: { get_input: boot_order }
+      disk_keys: { get_input: disk_keys }
+      ethernet_keys: { get_input: ethernet_keys }
+      networking: { get_input: networking }
+      vm_folder: { get_input: vm_folder_name }
+      extra_config: { get_input: vm_advanced_parameters }
+      server:
+        name: { get_input: hostname }
+        template: { get_input: template_name }
+        memory: { get_input: memory_size }
+        cpus: { get_input: vcpu }
+        disk_provision_type: { get_input: disk_provisioning }
+        disk_size: { get_input: os_disk_size }
+        cpu_hot_add: { get_input: cpu_hot_add }
+        cpu_hot_remove: { get_input: cpu_hot_remove }
+        memory_hot_add: { get_input: memory_hot_add }
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start: {}
+      nativeedge.interfaces.host:
+        get_state: {}
+    relationships:
+      - type: nativeedge.relationships.connected_to
+        target: cdrom_iso
+
+  generate_devices_blueprint:
+    type: nativeedge.nodes.SoftwareComponent
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: vm/external/scripts/generate_devices_blueprint.py
+          executor: central_deployment_agent
+          inputs:
+            template: vm/external/templates/devices_blueprint_template.yaml
+            parameters:
+              pci_devices: { get_input: pci_devices }
+              usb_devices: { get_input: usb_devices }
+              serial_ports: { get_input: serial_ports }
+              nics: { get_input: nics }
+              pci_turn_off_vm: { get_input: pci_turn_off_vm }
+            tenant: { get_sys: ["tenant", "name"] }
+            deployment_id: { get_sys: ["deployment", "id"] }
+
+  prepare_blueprints_archives:
+    type: nativeedge.nodes.SoftwareComponent
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: vm/external/scripts/prepare_blueprints_archives.sh
+          executor: central_deployment_agent
+          inputs:
+            TENANT: { get_sys: ["tenant", "name"] }
+            DEPLOYMENT_ID: { get_sys: ["deployment", "id"] }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: generate_devices_blueprint
+
+  storage:
+    type: nativeedge.nodes.ServiceComponent
+    properties:
+      resource_config:
+        blueprint:
+          external_resource: false
+          id: { concat: ["storage-", {get_sys: [deployment, id]}] }
+          blueprint_archive: storage.zip
+          main_file_name: blueprint.yaml
+          labels:
+            - hidden: 'true'
+        deployment:
+          id: { concat: ["storage-", {get_sys: [deployment, id]}] }
+          auto_inc_suffix: true
+          inputs:
+            vsphere_secret: { get_input: vsphere_secret_name }
+            resource_pool_name: { get_input: resource_pool_name }
+            vm_name: { get_attribute: ["vm", "name"] }
+            storage_size: { get_input: storage_disk_size }
+            storage_thin_provision: { get_input: ["storage_disk_thin_provisioning", {get_input: storage_disk_provisioning}] }
+    capabilities:
+      scalable:
+        properties:
+          default_instances: { get_input: disks_count }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm
+      - type: nativeedge.relationships.depends_on
+        target: prepare_blueprints_archives
+
+  devices:
+    type: nativeedge.nodes.ServiceComponent
+    properties:
+      resource_config:
+        blueprint:
+          external_resource: false
+          id: { concat: ["devices-", {get_sys: [deployment, id]}] }
+          blueprint_archive: devices.zip
+          main_file_name: blueprint.yaml
+          labels:
+            - hidden: 'true'
+        deployment:
+          id: { concat: ["devices-", {get_sys: [deployment, id]}] }
+          auto_inc_suffix: true
+          inputs:
+            vsphere_secret: { get_input: vsphere_secret_name }
+            resource_pool_name: { get_input: resource_pool_name }
+            vm_name: { get_attribute: ["vm", "name"] }
+            pci_devices: { get_input: pci_devices }
+            usb_devices: { get_input: usb_devices }
+            serial_ports: { get_input: serial_ports }
+            nics: { get_input: nics }
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        check_drift: {}
+        update: {}
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm
+      - type: nativeedge.relationships.depends_on
+        target: prepare_blueprints_archives
+      - type: nativeedge.relationships.depends_on
+        target: storage
+
+  vm_info:
+    type: nativeedge.nodes.vsphere.Server
+    properties:
+      wait_ip: true
+      use_external_resource: true
+      connection_config:
+        username: { get_secret: [{get_input: vsphere_secret_name}, "username"] }
+        password: { get_secret: [{get_input: vsphere_secret_name}, "password"] }
+        host: { get_secret: [{get_input: vsphere_secret_name}, "host"] }
+        port: { get_secret: [{get_input: vsphere_secret_name}, "port"] }
+        datacenter_name: { get_secret: [{get_input: vsphere_secret_name}, "datacenter_name"] }
+        resource_pool_name: { get_input: resource_pool_name }
+        auto_placement: { get_secret: [{get_input: vsphere_secret_name}, "auto_placement"] }
+        allow_insecure: { get_secret: [{get_input: vsphere_secret_name}, "allow_insecure"] }
+        certificate_data: { get_secret: [{get_input: vsphere_secret_name}, "certificate_data"] }
+      force_stop: true
+      agent_config:
+        install_method: none
+      allowed_hosts: { get_input: allowed_esxi_hosts }
+      allowed_datastores:
+        - { get_input: datastore_name }
+      cdrom_image: { get_attribute: ["cdrom_iso", "storage_image"] }
+      boot_order: { get_input: boot_order }
+      disk_keys: { get_input: disk_keys }
+      ethernet_keys: { get_input: ethernet_keys }
+      networking: { get_input: networking }
+      vm_folder: { get_input: vm_folder_name }
+      extra_config: { get_input: vm_advanced_parameters }
+      server:
+        name: { get_attribute: ["vm", "name"] }
+        template: { get_input: template_name }
+        memory: { get_input: memory_size }
+        cpus: { get_input: vcpu }
+        disk_provision_type: { get_input: disk_provisioning }
+        disk_size: { get_input: os_disk_size }
+        cpu_hot_add: { get_input: cpu_hot_add }
+        cpu_hot_remove: { get_input: cpu_hot_remove }
+        memory_hot_add: { get_input: memory_hot_add }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm
+        source_interfaces:
+          nativeedge.interfaces.relationship_lifecycle:
+            establish:
+              implementation: vm/external/scripts/server_runtimeprops.py
+              executor: central_deployment_agent
+              inputs:
+                runtime_properties_list:
+                  - networks
+                  - expected_configuration
+      - type: nativeedge.relationships.depends_on
+        target: prepare_blueprints_archives
+      - type: nativeedge.relationships.depends_on
+        target: storage
+      - type: nativeedge.relationships.depends_on
+        target: devices
+
+  cdrom_iso:
+    type: nativeedge.nodes.vsphere.CloudInitISO
+    properties:
+      connection_config:
+        username: { get_secret: [{get_input: vsphere_secret_name}, "username"] }
+        password: { get_secret: [{get_input: vsphere_secret_name}, "password"] }
+        host: { get_secret: [{get_input: vsphere_secret_name}, "host"] }
+        port: { get_secret: [{get_input: vsphere_secret_name}, "port"] }
+        datacenter_name: { get_secret: [{get_input: vsphere_secret_name}, "datacenter_name"] }
+        resource_pool_name: { get_input: resource_pool_name }
+        auto_placement: { get_secret: [{get_input: vsphere_secret_name}, "auto_placement"] }
+        allow_insecure: { get_secret: [{get_input: vsphere_secret_name}, "allow_insecure"] }
+        certificate_data: { get_secret: [{get_input: vsphere_secret_name}, "certificate_data"] }
+      datacenter_name: { get_secret: [{get_input: vsphere_secret_name}, "datacenter_name"] }
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          inputs:
+            allowed_datastore_ids:
+              - { get_attribute: ["datastore", "vsphere_datastore_id"] }
+            vol_ident: cidata
+            files:
+              meta-data: { get_attribute: ["cloud_init_meta", "cloud_config"] }
+              user-data: { get_attribute: ["cloud_init_user", "cloud_config"] }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: datastore
+      - type: nativeedge.relationships.depends_on
+        target: cloud_init_meta
+      - type: nativeedge.relationships.depends_on
+        target: cloud_init_user
+data_types:
+
+  nativeedge.datatypes.vsphere.PCIDevice:
+    properties:
+      device_name:
+        type: string
+        description: PCI Passthrough Device name
+        required: true
+
+  nativeedge.datatypes.vsphere.USBDevice:
+    properties:
+      device_name:
+        type: string
+        description: Host USB Device name
+        required: true
+      controller_type:
+        type: string
+        description: >
+          USB Controller type associated with USB. Values can be: usb2, usb3
+        required: false
+        default: usb3
+
+  nativeedge.datatypes.vsphere.SerialPort:
+    properties:
+      device_name:
+        type: string
+        description: >
+          Host Serial Port name should be an absolute path: /dev/char/serial/uartX
+        required: true
+
+  nativeedge.datatypes.vsphere.NIC:
+    properties:
+      network_name:
+        type: string
+        description: >
+          Name  of network which nic will be created
+        required: true
+      external_network_distributed:
+        type: boolean
+        description: >
+          External Network distribution
+        default: true
+      external_network:
+        type: boolean
+        description: >
+          External network
+        default: true
+      adapter_type:
+        type: string
+        description: >
+          Name of adapter to create NIC
+        required: true
+      network_management:
+        type: boolean
+        description: >
+          Is management network
+        required: true
+      dhcp_network:
+        type: boolean
+        description: >
+          Dhcp network
+        default: true
+      network_cidr:
+        type: string
+        description: >
+          CIDR of the network
+        default: ''
+      gateway:
+        type: string
+        description: >
+          IP address of the network gateway
+        default: ''
+      ip:
+        type: string
+        description: >
+          Static IP address
+        default: ''
+
+dsl_definitions:
+
+  connection_config:
+    username: { get_secret: [{get_input: vsphere_secret_name}, "username"] }
+    password: { get_secret: [{get_input: vsphere_secret_name}, "password"] }
+    host: { get_secret: [{get_input: vsphere_secret_name}, "host"] }
+    port: { get_secret: [{get_input: vsphere_secret_name}, "port"] }
+    datacenter_name: { get_secret: [{get_input: vsphere_secret_name}, "datacenter_name"] }
+    resource_pool_name: { get_input: resource_pool_name }
+    auto_placement: { get_secret: [{get_input: vsphere_secret_name}, "auto_placement"] }
+    allow_insecure: { get_secret: [{get_input: vsphere_secret_name}, "allow_insecure"] }
+    certificate_data: { get_secret: [{get_input: vsphere_secret_name}, "certificate_data"] }
+
