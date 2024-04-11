@@ -1,0 +1,113 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  This blueprint creates a VM on vSphere with Litmus Edge Manager.
+labels:
+
+  isv-sys:
+    values:
+      - litmus-edge-manager
+
+imports:
+  - nativeedge/types/types.yaml
+  - eo/definitions.yaml
+  - inputs.yaml
+  - outputs.yaml
+  - plugin:nativeedge-utilities-plugin
+
+node_templates:
+
+  preconditions:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start:
+          implementation: eo/scripts/get_system_rescue_iso.sh
+          executor: central_deployment_agent
+          inputs:
+            IMAGE_URL: { get_input: system_rescue_url }
+            CURL_CONFIG: { get_secret: {get_input: system_rescue_image_curl_config_secret_name} }
+            TEMP_PATH: { get_input: images_local_path }
+            IMAGE_NAME: { get_input: system_rescue_image_name }
+
+  modified_system_rescue_image:
+    type: nativeedge.nodes.resources.ModifiedIso
+    properties:
+      iso_path: { get_attribute: ["preconditions", "system_rescue_iso"] }
+      output_iso_path: { get_input: system_rescue_image_output_name }
+      new_files:
+        - iso_path: /SYSRESCUE.D/AUTORUN_YAML
+          file_context: >
+            ---
+
+            global:
+              copytoram: true
+          rr_name: 200-options.yaml
+        - iso_path: /AUTORUN/AUTORUN0
+          file_context: >
+            #!/bin/bash
+
+            virt_platform_name=$(dmidecode -s system-product-name)
+
+            if fdisk -l /dev/mapper/edgemanager--vg-root; then
+              yes yes | parted ---pretend-input-tty /dev/sda 'resizepart 2 100%'
+              yes yes | parted ---pretend-input-tty /dev/sda 'resizepart 6 100%'
+              pvresize /dev/sda6
+              lvresize -l +50%FREE /dev/mapper/edgemanager--vg-data
+              lvresize -l +100%FREE /dev/mapper/edgemanager--vg-root
+              e2fsck -f /dev/mapper/edgemanager--vg-data -p
+              e2fsck -f /dev/mapper/edgemanager--vg-root -p
+              resize2fs /dev/mapper/edgemanager--vg-root
+              resize2fs /dev/mapper/edgemanager--vg-data
+            else
+              echo "fix" | parted ---pretend-input-tty /dev/sda print
+              yes yes | parted ---pretend-input-tty /dev/sda 'resizepart 7 100%'
+              e2fsck -f /dev/sda7 -p
+              resize2fs /dev/sda7
+            fi
+
+            if grep -qi vmware <<< ${virt_platform_name}; then
+              eject -T /dev/cdrom
+              shutdown -r
+            else
+              shutdown
+            fi
+          rr_name: autorun0
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: preconditions
+
+inputs:
+
+  system_rescue_image_output_name:
+    display_label: System rescue image File name output
+    type: string
+    default: /opt/manager/resources/os_images/systemrescue-10.01-amd64_customized.iso
+
+  images_local_path:
+    type: string
+    display_label: Datastore Name
+    description: Name of the Datastore to use with the VM
+    default: /opt/manager/resources/os_images
+    hidden: true
+
+  system_rescue_url:
+    display_label: System rescue image File path
+    type: string
+    default: https://fastly-cdn.system-rescue.org/releases/10.01/systemrescue-10.01-amd64.iso
+
+  system_rescue_image_name:
+    display_label: System rescue image name
+    type: string
+    default: systemrescue-10.01-amd64.iso
+
+  system_rescue_image_curl_config_secret_name:
+    display_label: System rescue image curl config
+    type: string
+    default: systemrescue_curl_config
+capabilities:
+
+  iso_path:
+    description: Modified iso path
+    value: { get_attribute: ["modified_system_rescue_image", "modified_iso_path"] }
+
