@@ -1,0 +1,586 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  This blueprint to install docker and create image hub
+
+imports:
+  - nativeedge/types/types.yaml
+  - plugin:nativeedge-docker-plugin
+  - plugin:nativeedge-fabric-plugin
+  - plugin:nativeedge-ansible-plugin
+  - plugin:nativeedge-utilities-plugin
+  - types.yaml
+
+inputs:
+
+  docker_ip:
+    display_label: ECE Instance IP
+    type: string
+    default: { get_environment_capability: docker_ip }
+    hidden: true
+
+  docker_port:
+    display_label: Docker port
+    type: string
+    required: true
+    hidden: true
+    default: { get_environment_capability: docker_port }
+
+  docker_vm_user_secret_name:
+    display_label: Docker vm user secret name
+    type: string
+    hidden: true
+    default: { get_environment_capability: docker_user_secret_name }
+
+  docker_vm_private_key_secret_name:
+    display_label: Docker vm private key secret name
+    type: string
+    hidden: true
+    default: { get_environment_capability: docker_private_key_secret_name }
+
+  container_name:
+    display_label: Name of container
+    type: string
+    required: true
+    default: litmus_edge
+
+  image_name:
+    display_label: Image
+    type: string
+    required: true
+    default: us-docker.pkg.dev/litmus-sales-enablement/litmusedge/litmusedge-std-docker
+
+  image_version:
+    display_label: Image version
+    type: string
+    required: true
+    default: latest
+
+  image_tar_name:
+    display_label: Image tar name
+    type: string
+    required: true
+    default: litmusedge.tar
+
+  catalog_path:
+    display_label: EO catalog path
+    type: string
+    default: /resources/packages/docker
+    hidden: true
+
+  ports:
+    display_label: Ports
+    type: dict
+    default:
+      443/tcp: '8443'
+      4840/tcp: '9001'
+
+  detach_before_completed:
+    display_label: Detach before container completed
+    type: boolean
+    default: true
+
+  container_command:
+    display_label: Container command
+    description: Commands to execute into container
+    type: string
+    default: ''
+
+  remove_image_on_delete_workflow:
+    display_label: Remove image when the uninstall workflow is executed
+    type: boolean
+    default: false
+
+  license_activation_key:
+    display_label: License Activation Key
+    type: string
+    default: 4925-0820-1313-8746
+
+  mqtt:
+    display_label: MQTT Broker Config
+    type: nativeedge.datatypes.Litmus.MQTTBroker
+    default:
+      ip: { get_secret: ["sdp", "ip"] }
+      port: { get_secret: ["sdp", "port"] }
+      fqdn: { get_secret: ["sdp", "fqdn"] }
+      collector_name: { get_secret: ["sdp", "collector_name"] }
+      ca_cert: { get_secret: ["sdp", "ca_cert"] }
+      client_id: { get_secret: ["sdp", "client_id"] }
+      username: { get_secret: ["sdp", "username"] }
+      password: { get_secret: ["sdp", "password"] }
+      topic: { get_secret: ["sdp", "topic"] }
+
+dsl_definitions:
+
+  docker_config:
+    docker_host: { get_input: docker_ip }
+    docker_rest_port: { get_input: docker_port }
+
+node_templates:
+
+  ece:
+    type: nativeedge.nodes.ECE.Agent
+    properties:
+      ip: { get_environment_capability: ece_ip }
+      ece_agent_config: { get_environment_capability: ece_nativeedge_agent }
+      agent_config:
+        install_method: none
+
+  ansible_config:
+    type: nativeedge.nodes.ansible.Ansible
+    properties:
+      use_existing_resource: true
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        precreate:
+          implementation: scripts/ansible/tar.sh
+          executor: central_deployment_agent
+          inputs:
+            ARCHIVES_DIR: archives
+            PLAYBOOKS_DIR: playbooks
+        create:
+          implementation: scripts/ansible/preinstall.sh
+          executor: host_agent
+          inputs:
+            PLAYBOOK_VENV: { concat: [{get_attribute: [ece, nativeedge_agent, agent_dir]}, "/plugins/", {get_sys: [tenant, name]}, "/nativeedge-ansible-plugin/3.1.6"] }
+        configure:
+          implementation: scripts/ansible/configure.sh
+          executor: host_agent
+          inputs:
+            TENANT_ID: { get_sys: ["tenant", "name"] }
+            DEPLOYMENT_ID: { get_sys: ["deployment", "id"] }
+            BLUEPRINT_ID: { get_sys: ["deployment", "blueprint"] }
+            EDGE_USER: { get_secret: ece_edge_username }
+            PLAYBOOKS_PATH: { get_attribute: ["SELF", "playbooks_path"] }
+        start: {}
+        stop:
+          implementation: scripts/ansible/clean.sh
+          executor: host_agent
+          inputs:
+            TENANT_ID: { get_sys: ["tenant", "name"] }
+            DEPLOYMENT_ID: { get_sys: ["deployment", "id"] }
+            BLUEPRINT_ID: { get_sys: ["deployment", "blueprint"] }
+            EDGE_USER: { get_secret: ece_edge_username }
+            PLAYBOOKS_PATH: { get_attribute: ["SELF", "playbooks_path"] }
+        delete: {}
+    relationships:
+      - type: nativeedge.relationships.contained_in
+        target: ece
+
+  image_load:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        configure:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: scripts/docker/download_image_tar.sh
+            hide_output: false
+            fabric_env:
+              host_string: { get_input: docker_ip }
+              user: { get_secret: {get_input: docker_vm_user_secret_name} }
+              key: { get_secret: {get_input: docker_vm_private_key_secret_name} }
+            process:
+              env:
+                NATIVEEDGE_USER: { get_secret: nativeedge_user }
+                NATIVEEDGE_PASSWORD: { get_secret: nativeedge_password }
+                CATALOG_URL: { concat: ["https://", {get_secret: nativeedge_host_ip}, ":", {get_secret: nativeedge_host_port}, {get_input: catalog_path}] }
+                IMAGE_TAR_NAME: { get_input: image_tar_name }
+                IMAGE_TAG: { concat: [{get_input: image_name}, ":", {get_input: image_version}] }
+        delete:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: scripts/docker/image_cleanup.sh
+            hide_output: false
+            fabric_env:
+              host_string: { get_input: docker_ip }
+              user: { get_secret: {get_input: docker_vm_user_secret_name} }
+              key: { get_secret: {get_input: docker_vm_private_key_secret_name} }
+            process:
+              env:
+                DELETE: { get_input: remove_image_on_delete_workflow }
+                IMAGE_TAG: { concat: [{get_input: image_name}, ":", {get_input: image_version}] }
+
+  container:
+    type: nativeedge.nodes.docker.container
+    properties:
+      client_config:
+        docker_host: { get_input: docker_ip }
+        docker_rest_port: { get_input: docker_port }
+      resource_config:
+        image_tag: { concat: [{get_input: image_name}, ":", {get_input: image_version}] }
+        container_args:
+          name: { get_input: container_name }
+          detach: { get_input: detach_before_completed }
+          ports: { get_input: ports }
+          command: { get_input: container_command }
+          host_config:
+            cap_add: NET_ADMIN
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: image_load
+
+  init_config:
+    type: nativeedge.nodes.ansible.Executor
+    properties:
+      ansible_external_venv: { get_attribute: ["ansible_config", "playbook_venv"] }
+      playbook_path: playbooks/init_config/main.yml
+      run_data:
+        IP: { concat: [{get_input: docker_ip}, ":", {get_input: [ports, 443/tcp]}] }
+        ADMIN_PASSWD: { get_secret: ["litmus_edge", "admin_passwd"] }
+        VALIDATE_CERTS: false
+      sources:
+        all:
+          hosts:
+            localhost:
+              ansible_host: 127.0.0.1
+              ansible_connection: local
+      store_facts: false
+      log_stdout: false
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        precreate:
+          executor: host_agent
+        start:
+          executor: host_agent
+        delete:
+          executor: host_agent
+    relationships:
+      - type: nativeedge.relationships.connected_to
+        target: ansible_config
+      - type: nativeedge.relationships.connected_to
+        target: container
+      - type: nativeedge.relationships.contained_in
+        target: ece
+
+  advanced_config:
+    type: nativeedge.nodes.ansible.Executor
+    properties:
+      ansible_external_venv: { get_attribute: ["ansible_config", "playbook_venv"] }
+      playbook_path: playbooks/advanced_config/main.yml
+      run_data:
+        IP: { concat: [{get_input: docker_ip}, ":", {get_input: [ports, 443/tcp]}] }
+        ADMIN_PASSWD: { get_secret: ["litmus_edge", "admin_passwd"] }
+        VALIDATE_CERTS: false
+        LICENSE_ACTIVATION_KEY: { get_input: license_activation_key }
+      sources:
+        all:
+          hosts:
+            localhost:
+              ansible_host: 127.0.0.1
+              ansible_connection: local
+      store_facts: false
+      log_stdout: false
+      ansible_env_vars:
+        ANSIBLE_HOST_KEY_CHECKING: 'False'
+        ANSIBLE_INVALID_TASK_ATTRIBUTE_FAILED: 'False'
+        ANSIBLE_STDOUT_CALLBACK: json
+        ANSIBLE_FACT_PATH: { concat: [{get_attribute: [ece, nativeedge_agent, agent_dir]}, "/facts.d/", {get_sys: [deployment, id]}] }
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        precreate:
+          executor: host_agent
+        start:
+          executor: host_agent
+        poststart:
+          executor: host_agent
+          implementation: scripts/license/save_request.sh
+          inputs:
+            OFFLINE_ACTIVATION_REQUEST_FACT: offline_activation_request.fact
+        delete:
+          executor: host_agent
+    relationships:
+      - type: nativeedge.relationships.connected_to
+        target: ansible_config
+      - type: nativeedge.relationships.connected_to
+        target: container
+      - type: nativeedge.relationships.contained_in
+        target: ece
+      - type: nativeedge.relationships.connected_to
+        target: init_config
+
+  license_activation:
+    type: nativeedge.nodes.ansible.Executor
+    properties:
+      ansible_external_venv: { get_attribute: ["ansible_config", "playbook_venv"] }
+      playbook_path: playbooks/advanced_config/activate_license.yml
+      run_data:
+        IP: { concat: [{get_input: docker_ip}, ":", {get_input: [ports, 443/tcp]}] }
+        ADMIN_PASSWD: { get_secret: ["litmus_edge", "admin_passwd"] }
+        VALIDATE_CERTS: false
+        OFFLINE_ACTIVATION_KEY: null
+      sources:
+        all:
+          hosts:
+            localhost:
+              ansible_host: 127.0.0.1
+              ansible_connection: local
+      store_facts: false
+      log_stdout: false
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        precreate:
+          executor: host_agent
+        start: {}
+        delete:
+          executor: host_agent
+      ansible:
+        reload:
+          executor: host_agent
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: ansible_config
+      - type: nativeedge.relationships.contained_in
+        target: ece
+      - type: nativeedge.relationships.connected_to
+        target: container
+      - type: nativeedge.relationships.connected_to
+        target: advanced_config
+
+  configure_sdp:
+    type: nativeedge.nodes.ansible.Executor
+    properties:
+      ansible_external_venv: { get_attribute: ["ansible_config", "playbook_venv"] }
+      playbook_path: playbooks/advanced_config/configure_mqtt.yml
+      run_data:
+        IP: { concat: [{get_input: docker_ip}, ":", {get_input: [ports, 443/tcp]}] }
+        ADMIN_PASSWD: { get_secret: ["litmus_edge", "admin_passwd"] }
+        VALIDATE_CERTS: false
+        MQTT_IP: { get_input: ["mqtt", "ip"] }
+        MQTT_CONFIG:
+          port: { get_input: ["mqtt", "port"] }
+          hostname: { get_input: ["mqtt", "fqdn"] }
+          name: { get_input: ["mqtt", "collector_name"] }
+          caCert: { get_input: ["mqtt", "ca_cert"] }
+          clientId: { get_input: ["mqtt", "client_id"] }
+          username: { get_input: ["mqtt", "username"] }
+          password: { get_input: ["mqtt", "password"] }
+          topic: { get_input: ["mqtt", "topic"] }
+      sources:
+        all:
+          hosts:
+            localhost:
+              ansible_host: 127.0.0.1
+              ansible_connection: local
+      store_facts: false
+      log_stdout: false
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        precreate:
+          executor: host_agent
+        start: {}
+        delete:
+          executor: host_agent
+      ansible:
+        reload:
+          executor: host_agent
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: ansible_config
+      - type: nativeedge.relationships.contained_in
+        target: ece
+      - type: nativeedge.relationships.connected_to
+        target: container
+      - type: nativeedge.relationships.connected_to
+        target: license_activation
+capabilities:
+
+  LITMUS_IP:
+    value: { concat: ["https://", {get_input: docker_ip}, ":", {get_input: [ports, 443/tcp]}] }
+
+  offline_activation_request:
+    description: Offline Activation Request
+    value: { get_attribute: ["advanced_config", "facts", "ansible_local", "offline_activation_request"] }
+workflows:
+
+  Apply_License:
+    mapping: nativeedge_custom_workflow.nativeedge_custom_workflow.tasks.customwf
+    parameters:
+      nodes_to_runon:
+        default:
+          - license_activation
+      operations_to_execute:
+        default:
+          - ansible.reload
+      allow_kwargs_override:
+        default: true
+      ansible_external_venv:
+        default: { get_property: ["license_activation", "ansible_external_venv"] }
+      playbook_path:
+        default: playbooks/advanced_config/activate_license.yml
+      run_data:
+        default:
+          IP: { get_property: ["license_activation", "run_data", "IP"] }
+          ADMIN_PASSWD: { get_property: ["license_activation", "run_data", "ADMIN_PASSWD"] }
+          VALIDATE_CERTS: { get_property: ["license_activation", "run_data", "VALIDATE_CERTS"] }
+          OFFLINE_ACTIVATION_KEY: CHANGE_ME
+      sources:
+        default:
+          all:
+            hosts:
+              localhost:
+                ansible_host: 127.0.0.1
+                ansible_connection: local
+      store_facts:
+        default: false
+      log_stdout:
+        default: false
+
+  Configure_SDP:
+    mapping: nativeedge_custom_workflow.nativeedge_custom_workflow.tasks.customwf
+    parameters:
+      nodes_to_runon:
+        default:
+          - configure_sdp
+      operations_to_execute:
+        default:
+          - ansible.reload
+      allow_kwargs_override:
+        default: true
+      ansible_external_venv:
+        default: { get_property: ["configure_sdp", "ansible_external_venv"] }
+      playbook_path:
+        default: playbooks/advanced_config/configure_mqtt.yml
+      run_data:
+        default:
+          IP: { get_property: ["configure_sdp", "run_data", "IP"] }
+          ADMIN_PASSWD: { get_property: ["configure_sdp", "run_data", "ADMIN_PASSWD"] }
+          VALIDATE_CERTS: { get_property: ["configure_sdp", "run_data", "VALIDATE_CERTS"] }
+          MQTT_IP: { get_input: ["mqtt", "ip"] }
+          MQTT_CONFIG:
+            port: { get_input: ["mqtt", "port"] }
+            hostname: { get_input: ["mqtt", "fqdn"] }
+            name: { get_input: ["mqtt", "collector_name"] }
+            caCert: { get_input: ["mqtt", "ca_cert"] }
+            clientId: { get_input: ["mqtt", "client_id"] }
+            username: { get_input: ["mqtt", "username"] }
+            password: { get_input: ["mqtt", "password"] }
+            topic: { get_input: ["mqtt", "topic"] }
+      sources:
+        default:
+          all:
+            hosts:
+              localhost:
+                ansible_host: 127.0.0.1
+                ansible_connection: local
+      store_facts:
+        default: false
+      log_stdout:
+        default: false
+data_types:
+
+  nativeedge.datatypes.CfyConfig:
+    description: Cloudify Manager Access Config
+    properties:
+      ip:
+        description: Cloudify Manager IP Address
+        type: string
+      port:
+        description: Cloudify Manager Port
+        type: integer
+      username:
+        description: Cloudify Manager username
+        type: string
+        default: admin
+      password:
+        description: Cloudify Manager password
+        type: string
+        default: admin
+
+  nativeedge.datatypes.Litmus.MQTTBroker:
+    description: MQTT Broker Configuration
+    properties:
+      ip:
+        description: MQTT Broker IP Address
+        type: string
+        default: ''
+      port:
+        description: MQTT Broker Port
+        type: integer
+        default: 8883
+      fqdn:
+        description: MQTT Broker FQDN
+        type: string
+        default: ''
+      collector_name:
+        description: MQTT Broker Collector Name
+        type: string
+        default: ''
+      ca_cert:
+        description: MQTT Broker CA Certificate
+        type: string
+        default: ''
+      client_id:
+        description: MQTT Broker Client ID
+        type: string
+        default: ''
+      username:
+        description: MQTT Broker Username
+        type: string
+        default: ''
+      password:
+        description: MQTT Broker Password
+        type: string
+        default: ''
+      topic:
+        description: MQTT Broker Integration Topic
+        type: string
+        default: ''
+node_types:
+
+  nativeedge.nodes.ECE.Agent:
+    derived_from: nativeedge.nodes.Compute
+    properties:
+      ece_agent_config:
+        description: ECE Agent Configuration (JSON)
+        type: string
+        default: ''
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: scripts/agent/inject.py
+          executor: central_deployment_agent
+          inputs:
+            nativeedge_agent:
+              type: string
+              default: { get_property: ["SELF", "ece_agent_config"] }
+
+  nativeedge.nodes.ECE.Image:
+    derived_from: nativeedge.nodes.ApplicationModule
+    properties:
+      storage_path:
+        description: Path to images storage on ECE
+        type: string
+        default: /data/images
+      name:
+        description: QCOW2 image name
+        type: string
+      target_vm:
+        description: Target VM name
+        type: string
+      cfy_config:
+        description: Cloudify Manager Config
+        type: nativeedge.datatypes.CfyConfig
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: scripts/vm/prepare.sh
+          inputs:
+            CATALOG_URL:
+              default: { concat: ["https://", {get_property: [SELF, cfy_config, ip]}, ":", {get_property: [SELF, cfy_config, port]}, "/resources/os_images"] }
+            STORAGE_PATH:
+              default: { get_property: ["SELF", "storage_path"] }
+            DISK:
+              default: { get_property: ["SELF", "name"] }
+            VM_HOSTNAME:
+              default: { get_property: ["SELF", "target_vm"] }
+            NATIVEEDGE_USER:
+              default: { get_property: ["SELF", "cfy_config", "username"] }
+            NATIVEEDGE_PASSWORD:
+              default: { get_property: ["SELF", "cfy_config", "password"] }
+        delete:
+          implementation: scripts/vm/clean.sh
+          inputs:
+            STORAGE_PATH:
+              default: { get_property: ["SELF", "storage_path"] }
+
