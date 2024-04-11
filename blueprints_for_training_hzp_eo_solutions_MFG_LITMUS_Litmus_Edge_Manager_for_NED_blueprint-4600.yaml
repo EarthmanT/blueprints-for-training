@@ -1,0 +1,653 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  This blueprint creates a VM on ECE with Litmus Edge Manager.
+
+imports:
+  - nativeedge/types/types.yaml
+  - eo/definitions.yaml
+  - eo/inputs.yaml
+  - eo/inputs_common.yaml
+  - eo/outputs.yaml
+  - external/nativeedge_ece_vm/inputs_common.yaml
+  - external/nativeedge_ece_vm/definitions.yaml
+  - plugin:nativeedge-ansible-plugin
+  - plugin:nativeedge-plugin
+  - plugin:nativeedge-fabric-plugin
+labels:
+
+  csys-obj-type:
+    values:
+      - environment
+
+  target_environment:
+    values:
+      - ned
+
+  vendor:
+    values:
+      - litmus
+
+  solution:
+    values:
+      - litmus-edge-manager
+
+  version:
+    values:
+      - 2.14.0
+blueprint_labels:
+
+  env:
+    values:
+      - NED
+
+node_templates:
+
+  read_ip:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start:
+          implementation: eo/scripts/vm/get_ip.py
+          executor: central_deployment_agent
+          inputs:
+            DHCP: { get_input: dhcp }
+            IP: { get_attribute: ["vm", "capabilities", "vm_ip"] }
+            STATIC_IP: { get_input: static_ip }
+    relationships:
+      - target: vm
+        type: nativeedge.relationships.depends_on
+
+  init_config:
+    type: nativeedge.nodes.ansible.Executor
+    properties:
+      ansible_external_venv: { get_input: ansible_external_venv }
+      playbook_path: eo/playbooks/init_config/main.yml
+      sensitive_keys:
+        - ADMIN_DEFAULT_PASSWD
+        - ADMIN_PASSWD
+        - EM_SETUP_PASSWD
+        - ansible_password
+        - ansible_user
+        - ansible_ssh_private_key_file
+      run_data:
+        IP: { get_attribute: ["read_ip", "default_vm_ip"] }
+        PORT: { get_secret: [{get_input: litmus_edge_manager_secret_name}, "port"] }
+        ADMIN_USER: { get_secret: [{get_input: litmus_edge_manager_secret_name}, "admin_user"] }
+        ADMIN_DEFAULT_PASSWD: { get_secret: [{get_input: litmus_edge_manager_secret_name}, "admin_default_passwd"] }
+        ADMIN_PASSWD: { get_secret: [{get_input: litmus_edge_manager_secret_name}, "admin_passwd"] }
+        EM_SETUP_PASSWD: { get_secret: [{get_input: litmus_edge_manager_secret_name}, "setup_passwd"] }
+        VALIDATE_CERTS: false
+        USE_DHCP: { get_input: dhcp }
+        STATIC_IP: { get_input: static_ip }
+        GATEWAY: { get_input: gateway }
+        DNS_SERVERS: { get_input: dns }
+      sources:
+        all:
+          hosts:
+            localhost:
+              ansible_host: 127.0.0.1
+              ansible_connection: local
+            lem:
+              ansible_connection: paramiko
+              ansible_host: { get_attribute: ["vm_ssh_proxy", "eo_proxy_url"] }
+              ansible_port: { get_attribute: ["vm_ssh_proxy", "eo_proxy_port"] }
+              ansible_user: { get_secret: [{get_input: litmus_edge_manager_secret_name}, "ssh_user"] }
+              ansible_password: { get_secret: [{get_input: litmus_edge_manager_secret_name}, "ssh_passwd"] }
+              ansible_become: true
+              ansible_ssh_common_args: -o StrictHostKeyChecking=no
+      store_facts: false
+      log_stdout: false
+    relationships:
+      - type: nativeedge.relationships.connected_to
+        target: vm
+      - type: nativeedge.relationships.connected_to
+        target: read_ip
+
+  advanced_config:
+    type: nativeedge.nodes.ansible.Executor
+    properties:
+      ansible_external_venv: { get_input: ansible_external_venv }
+      playbook_path: eo/playbooks/advanced_config/main.yml
+      sensitive_keys:
+        - ADMIN_PASSWD
+        - ansible_password
+        - ansible_user
+        - ansible_ssh_private_key_file
+      run_data:
+        IP: { get_attribute: ["vm_https_proxy", "eo_proxy_url"] }
+        PORT: { get_attribute: ["vm_https_proxy", "eo_proxy_port"] }
+        ADMIN_USER: { get_secret: [{get_input: litmus_edge_manager_secret_name}, "admin_user"] }
+        ADMIN_PASSWD: { get_secret: [{get_input: litmus_edge_manager_secret_name}, "admin_passwd"] }
+        VALIDATE_CERTS: false
+        DOMAIN_IP: { get_attribute: ["read_ip", "vm_ip"] }
+      sources:
+        all:
+          hosts:
+            localhost:
+              ansible_host: 127.0.0.1
+              ansible_connection: local
+      store_facts: false
+      log_stdout: false
+      ansible_env_vars:
+        ANSIBLE_HOST_KEY_CHECKING: 'False'
+        ANSIBLE_INVALID_TASK_ATTRIBUTE_FAILED: 'False'
+        ANSIBLE_STDOUT_CALLBACK: json
+        ANSIBLE_FACT_PATH: { concat: [{get_input: ansible_external_venv}, "/facts.d/", {get_sys: [deployment, id]}] }
+    relationships:
+      - type: nativeedge.relationships.connected_to
+        target: init_config
+      - type: nativeedge.relationships.connected_to
+        target: read_ip
+
+  lem_binary_image:
+    type: nativeedge.nodes.template.BinaryImage
+    properties:
+      binary_image_config:
+        artifact:
+          path: { get_secret: [{get_input: artifact_configuration_secret_name}, "binary_image_url"] }
+          username: { get_secret: [{get_input: artifact_configuration_secret_name}, "binary_image_access_user"] }
+          access_token: { get_secret: [{get_input: artifact_configuration_secret_name}, "binary_image_access_token"] }
+        version: { get_secret: [{get_input: artifact_configuration_secret_name}, "binary_image_version"] }
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        precreate:
+          implementation: nativeedge.nativeedge_plugin.tasks.validate_binary_image_config
+        create:
+          implementation: nativeedge.nativeedge_plugin.tasks.upload_binary
+        delete:
+          implementation: nativeedge.nativeedge_plugin.tasks.delete_binary
+
+  system_rescue_binary_image:
+    type: nativeedge.nodes.template.BinaryImage
+    properties:
+      binary_image_config:
+        artifact:
+          path: { get_secret: [{get_input: artifact_configuration_secret_name}, "systemrescue_binary_image_url"] }
+          username: { get_secret: [{get_input: artifact_configuration_secret_name}, "systemrescue_binary_image_access_user"] }
+          access_token: { get_secret: [{get_input: artifact_configuration_secret_name}, "systemrescue_binary_image_access_token"] }
+        version: { get_secret: [{get_input: artifact_configuration_secret_name}, "systemrescue_binary_image_version"] }
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        precreate:
+          implementation: nativeedge.nativeedge_plugin.tasks.validate_binary_image_config
+        create:
+          implementation: nativeedge.nativeedge_plugin.tasks.upload_binary
+        delete:
+          implementation: nativeedge.nativeedge_plugin.tasks.delete_binary
+
+  vm_nativeedge:
+    type: nativeedge.nodes.ServiceComponent
+    properties:
+      resource_config:
+        blueprint:
+          external_resource: true
+          id: Virtual_Machine_without_cloud-init_for_NativeEdge_Endpoint_2.0.0
+        deployment:
+          display_name: { concat: [{get_sys: [deployment, name]}, "-vm"] }
+          auto_inc_suffix: true
+          inputs:
+            service_tag: { get_environment_capability: ece_service_tag }
+            name: { get_input: hostname }
+            image: { get_attribute: ["lem_binary_image", "binary_details", "extra", "artifact_id"] }
+            os_type: { get_input: os_type }
+            cpu: { get_input: vcpus }
+            memory: { get_input: memory_size }
+            storage: { get_input: os_disk_size }
+            disk: { get_input: disk }
+            hardware_options.vTPM: { get_input: hardware_options.vTPM }
+            hardware_options.secure_boot: { get_input: hardware_options.secure_boot }
+            hardware_options.firmware_type: { get_input: hardware_options.firmware_type }
+            enable_management: { get_input: enable_management }
+            network_settings:
+              - name: MGMT-VNIC
+                segment_name: Infrastructure Segment
+              - name: VNIC2
+                segment_name: { get_input: segment_name }
+            usb: { get_input: usb }
+            serial_port: { get_input: serial_port }
+            gpu: { get_input: gpu_passthrough }
+            video: { get_input: video }
+            iso_files:
+              - { get_attribute: ["system_rescue_binary_image", "binary_details", "extra", "artifact_id"] }
+            boot_order:
+              - cdrom
+              - hd
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: lem_binary_image
+      - type: nativeedge.relationships.depends_on
+        target: system_rescue_binary_image
+
+  boot_litmus:
+    type: nativeedge.nodes.template.Config
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_nativeedge
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: nativeedge.nativeedge_plugin.tasks.verify_vm_runstate
+          inputs:
+            vm_details: { get_attribute: ["vm_nativeedge", "capabilities", "vm_details"] }
+            expected_runstate: stopped
+        configure:
+          implementation: nativeedge.nativeedge_plugin.tasks.boot_order_update
+          max_retries: 10
+          inputs:
+            vm_details: { get_attribute: ["vm_nativeedge", "capabilities", "vm_details"] }
+            boot_order:
+              - hd
+              - cdrom
+        start:
+          implementation: nativeedge.nativeedge_plugin.tasks.start
+          inputs:
+            vm_details: { get_attribute: ["vm_nativeedge", "capabilities", "vm_details"] }
+
+  vm_ssh_proxy:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: nativeedge.nativeedge_plugin.tasks.get_eo_proxy
+          max_retries: 2
+          inputs:
+            serviceTag: { get_attribute: ["vm_nativeedge", "capabilities", "service_tag"] }
+            vmRef: { get_attribute: ["vm_nativeedge", "capabilities", "vm_name"] }
+            port: 22
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_nativeedge
+      - type: nativeedge.relationships.depends_on
+        target: boot_litmus
+
+  vm_https_proxy:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: nativeedge.nativeedge_plugin.tasks.get_eo_proxy
+          max_retries: 2
+          inputs:
+            serviceTag: { get_attribute: ["vm_nativeedge", "capabilities", "service_tag"] }
+            vmRef: { get_attribute: ["vm_nativeedge", "capabilities", "vm_name"] }
+            port: { get_secret: [{get_input: litmus_edge_manager_secret_name}, "port"] }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_nativeedge
+      - type: nativeedge.relationships.depends_on
+        target: boot_litmus
+
+  vm:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: external/nativeedge_ece_vm/scripts/get_ip.sh
+            fabric_env:
+              user: { get_secret: [{get_input: litmus_edge_manager_secret_name}, "ssh_user"] }
+              password: { get_secret: [{get_input: litmus_edge_manager_secret_name}, "ssh_passwd"] }
+              host_string: { get_attribute: ["vm_ssh_proxy", "eo_proxy_url"] }
+              port: { get_attribute: ["vm_ssh_proxy", "eo_proxy_port"] }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_ssh_proxy
+
+inputs:
+
+  litmus_edge_manager_secret_name:
+    type: secret_key
+    allow_update: false
+    display_label: Litmus Edge Manager Secret Name
+    description: >
+      Secret name containing common configuration settings
+
+      for Litmus Edge Manager. Example:
+
+      {
+        "admin_user": "admin",
+        "admin_default_passwd": "admin",
+        "admin_passwd": "Newp@ss123",
+        "demo_user": "demo",
+        "demo_default_passwd": "demo",
+        "demo_passwd": "Newp@ss123",
+        "ssh_user": "em_setup",
+        "ssh_passwd": "edgemanager",
+        "setup_passwd": "Newp@ss123",
+        "port": 8446
+      }
+
+  gateway:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Gateway IP Address
+    description: IP Address of the Network Gateway.
+    required: false
+    constraints:
+      - pattern: ^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$|^$
+        error_message: >
+          Invalid format for IP Address.
+
+          Example: 172.16.0.1
+
+  dns:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: DNS Servers
+    description: List of DNS servers addresses.
+    required: false
+
+  dhcp:
+    type: boolean
+    hidden: false
+    allow_update: false
+    display_label: DHCP
+    description: >
+      Enable to allow IP configuration to be taken from DHCP
+
+      instead of static IP settings.
+    default: true
+
+  static_ip:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Static IP and Mask Suffix
+    description: >
+      IP address and suffix. Example: 172.16.0.1/16.
+
+      Only required for static IP deployments, not for DHCP.
+    required: false
+    constraints:
+      - pattern: ^((25[0-5]|2[0-4]\d|1\d\d|\d{1,2})(\.(\d{1,3})){3}(\/(3[0-2]|[12]?\d))?|)$
+        error_message: >
+          Invalid format for IP Address in CIDR format.
+
+          Example: 172.16.0.1/16
+
+  ansible_external_venv:
+    type: string
+    hidden: true
+    display_label: External Ansible Virtual Environment Path
+    default: /opt/ansible
+
+  hostname:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Hostname
+    description: >
+      Hostname of the Virtual Machine
+
+      (an auto-generated suffix will also be added).
+
+      Cannot contain characters other than:
+
+      letters (a-z, A-Z), numbers (0-9), or hyphens (-).
+
+      Can be up to 63 characters long.
+    constraints:
+      - pattern: ^(?!-)[a-zA-Z0-9-]{1,63}(?<!-)$
+        error_message: >
+          Must be letters (a-z, A-Z), numbers (0-9), or hyphens (-).
+
+          No more than 64 characters.
+      - max_length: 64
+    default: lemvm
+
+  os_type:
+    type: string
+    hidden: true
+    allow_update: false
+    display_label: OS Type
+    description: The virtual machine Operating System.
+    default: LINUX-OTHERS
+    constraints:
+      - valid_values:
+          - LINUX-OTHERS
+
+  vcpus:
+    type: integer
+    hidden: false
+    display_label: vCPUs
+    description: >
+      Number of virtual CPUs allocated to the Virtual Machine.
+
+      See more about sizing recommendations:
+
+      https://docs.litmus.io/edgemanager/quickstart-guide/system-requirements
+    default: 8
+    constraints:
+      - greater_or_equal: 4
+
+  memory_size:
+    type: string
+    hidden: false
+    display_label: Memory Size
+    description: >
+      Memory size with unit [KB,MB,GB,TB,PB,EB,ZB,YB].
+
+      See more about sizing recommendations:
+
+      https://docs.litmus.io/edgemanager/quickstart-guide/system-requirements
+    default: 16GB
+    constraints:
+      - pattern: \d+(\.\d+)?(KB|MB|GB|TB|PB|EB|ZB|YB)
+        error_message: >
+          Incorrect format.
+
+          Memory size must be followed by unit [KB,MB,GB,TB,PB,EB,ZB,YB].
+
+          Example: 4GB
+
+  os_disk_size:
+    type: string
+    hidden: false
+    display_label: OS Disk Size
+    description: >
+      Storage size with unit [KB,MB,GB,TB,PB,EB,ZB,YB].
+
+      See more about sizing recommendations:
+
+      https://docs.litmus.io/edgemanager/quickstart-guide/system-requirements
+    default: 100GB
+    constraints:
+      - pattern: \d+(\.\d+)?(KB|MB|GB|TB|PB|EB|ZB|YB)
+        error_message: >
+          Incorrect format.
+
+          Disk size must be followed by unit [KB,MB,GB,TB,PB,EB,ZB,YB].
+
+          Example: 50GB
+
+  disk:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Endpoint Datastore Path
+    description: >
+      Deployment datastore path on target endpoint.
+
+      Available datastores can be retrieved from the endpoint screen.
+    default: /DataStore0
+    constraints:
+      - pattern: ^\/[a-zA-Z0-9]+$
+        error_message: >
+          Must start with slash (/), followed by alphanumeric characters.
+
+          Example: /DataStore0
+
+  hardware_options.vTPM:
+    type: boolean
+    hidden: true
+    allow_update: false
+    display_label: Hardware Options - vTPM
+    description: >
+      Enable vTPM.
+
+      Required for For Windows 11 OS, optional for other OS.
+    default: false
+
+  hardware_options.secure_boot:
+    type: boolean
+    hidden: true
+    allow_update: false
+    display_label: Hardware Options - Secure Boot
+    description: >
+      Enable secure boot.
+
+      Required for For Windows 11 OS, optional for other OS.
+    default: false
+
+  hardware_options.firmware_type:
+    type: string
+    hidden: true
+    allow_update: false
+    display_label: Hardware Options - Firmware Type
+    description: >
+      The firmware type configured in the Virtual Machine.
+
+      For Windows 11 OS this must be UEFI.
+    default: BIOS
+    constraints:
+      - valid_values:
+          - BIOS
+          - UEFI
+
+  enable_management:
+    type: boolean
+    hidden: true
+    allow_update: false
+    display_label: Enable Management
+    description: >
+      Enable management which will create a tap interface for
+
+      the infrastructure segment.
+    default: true
+
+  segment_name:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Bridged Network Name
+    description: Name of the Bridged Network.
+    constraints:
+      - pattern: ^[a-zA-Z0-9_.-]+$
+        error_message: >
+          Must be letters (a-z, A-Z), numbers (0-9), underscores (_),
+
+          dots (.), or hyphens (-).
+
+  usb:
+    type: list
+    hidden: true
+    allow_update: false
+    display_label: USB Devices List
+    description: >
+      A list of USB logical names to pass through to the Virtual Machine.
+
+      Valid values are "USB-1" to "USB-10"
+
+      Please make sure to select the USB port where USB device is connected.
+    required: false
+    default: []
+    item_type: string
+    constraints:
+      - valid_values:
+          - USB-1
+          - USB-2
+          - USB-3
+          - USB-4
+          - USB-5
+          - USB-6
+          - USB-7
+          - USB-8
+          - USB-9
+          - USB-10
+
+  serial_port:
+    type: list
+    hidden: true
+    allow_update: false
+    display_label: Serial Port
+    description: >
+      Serial port passthrough.
+
+      Please make sure to select the port where required device is connected.
+    required: false
+    default: []
+    item_type: dict
+    constraints:
+      - valid_values:
+          - port: COM-1
+          - port: COM-2
+          - port: COM-3
+          - port: COM-4
+          - port: COM-5
+          - port: COM-6
+          - port: COM-7
+          - port: COM-8
+          - port: COM-9
+          - port: COM-10
+
+  gpu_passthrough:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: GPU Passthrough
+    description: >
+      A list of GPU logical names.
+
+      Please make sure to select the GPU that is currently available in your
+
+      Endpoint. A list of GPU logical names available for your endpoint can
+
+      be found in the NativeEdge UI under Endpoints / Hardware / Peripherals
+    required: false
+    default: []
+    item_type: string
+    constraints:
+      - valid_values:
+          - NVIDIA A2
+          - NVIDIA A10
+          - NVIDIA A30
+          - NVIDIA A40
+          - NVIDIA A100
+          - NVIDIA L4
+          - NVIDIA L40
+
+  video:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: Video Passthrough
+    description: >
+      Video passthrough. A list of Video logical names (string).
+
+      E.g. 'Onboard Controller'
+    required: false
+    default: []
+
+  artifact_configuration_secret_name:
+    type: secret_key
+    hidden: false
+    allow_update: false
+    display_label: Artifact Configuration Secret Name
+    description: >
+      Secret name containing details needed for binary image and
+
+      artifacts download.
+capabilities:
+
+  url:
+    description: Litmus Edge Manager Console URL
+    value: { concat: ["https://", {get_attribute: [read_ip, vm_ip]}] }
+
+  admin_url:
+    description: Litmus Edge Manager Admin Console URL
+    value: { concat: ["https://", {get_attribute: [read_ip, vm_ip]}, ":", {get_secret: [{get_input: litmus_edge_manager_secret_name}, port]}] }
+
