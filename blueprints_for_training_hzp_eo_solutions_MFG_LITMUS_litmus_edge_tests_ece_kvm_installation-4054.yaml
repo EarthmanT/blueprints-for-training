@@ -1,0 +1,167 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  This blueprint creates a VM on ECE with Litmus Edge.
+
+imports:
+  - eo/inputs.yaml
+  - eo/outputs.yaml
+  - eo/types.yaml
+  - eo/definitions.yaml
+  - external/ece_vm/inputs.yaml
+  - external/ece_vm/definitions.yaml
+
+labels:
+
+  isv-sys:
+    values:
+      - litmus-edge
+
+  csys-obj-type:
+    values:
+      - environment
+
+node_templates:
+
+  init_config:
+    type: nativeedge.nodes.ApplicationModule
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        poststart:
+          implementation: tests/utilities/verify_inputs.py
+          executor: central_deployment_agent
+          inputs:
+            ansible_external_venv: { get_input: ansible_external_venv }
+            IP: { get_attribute: ["sdp_client_id_and_read_ip", "api_endpoint"] }
+            ADMIN_PASSWD: { get_secret: [{get_input: litmus_edge_details_secret_name}, "admin_passwd"] }
+            VALIDATE_CERTS: false
+            USE_DHCP: { get_input: dhcp }
+            STATIC_IP: { get_input: static_ip }
+            GATEWAY: { get_input: gateway }
+            DNS_SERVERS: { get_input: dns }
+    relationships:
+      - type: nativeedge.relationships.connected_to
+        target: vm
+      - type: nativeedge.relationships.depends_on
+        target: sdp_client_id_and_read_ip
+
+  advanced_config:
+    type: nativeedge.nodes.ApplicationModule
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        poststart:
+          implementation: tests/utilities/verify_inputs.py
+          executor: central_deployment_agent
+          inputs:
+            ansible_external_venv: { get_input: ansible_external_venv }
+            run_data:
+              IP: { get_attribute: ["sdp_client_id_and_read_ip", "api_endpoint"] }
+              ADMIN_PASSWD: { get_secret: [{get_input: litmus_edge_details_secret_name}, "admin_passwd"] }
+              VALIDATE_CERTS: false
+              MQTT: { get_secret: {get_input: mqtt_details_secret_name} }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: init_config
+      - type: nativeedge.relationships.connected_to
+        target: vm
+      - type: nativeedge.relationships.depends_on
+        target: sdp_client_id_and_read_ip
+
+  vm:
+    type: nativeedge.nodes.ApplicationModule
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start:
+          implementation: utilities/set_runtime_properties.py
+          executor: central_deployment_agent
+          inputs:
+            vm_ip: 10.0.0.1
+            vm_name: test_vm
+        poststart:
+          implementation: utilities/verify_inputs.py
+          executor: central_deployment_agent
+          inputs:
+            hostname: { get_input: hostname }
+            vcpu: { get_input: vcpus }
+            memory_size: { get_input: memory_size }
+            os_disk_size: { get_input: os_disk_size }
+            bridge_name: { get_input: bridge_name }
+            devices: { get_input: devices }
+            ece_storage_path: { get_input: ece_storage_path }
+            image_name: { get_input: image_name }
+            image_url: { get_input: image_url }
+            system_rescue_image_url: { get_input: system_rescue_image_url }
+            system_rescue_image_name: { get_input: system_rescue_image_name }
+            image_curl_config_secret_name: { get_input: image_curl_config_secret_name }
+            system_rescue_image_curl_config_secret_name: { get_input: system_rescue_image_curl_config_secret_name }
+            xml_template_name: external/templates/litmus_manager.xml
+
+inputs:
+
+  hostname:
+    display_label: Hostname
+    type: string
+
+  vcpu:
+    display_label: CPUs
+    type: string
+    constraints:
+      - greater_or_equal: 2
+
+  memory_size:
+    display_label: Memory Size (kB)
+    type: string
+    constraints:
+      - greater_or_equal: 4294967
+
+  os_disk_size:
+    display_label: VM DISK Size
+    type: string
+
+  bridge_name:
+    display_label: Name of the bridge interface
+    type: string
+    constraints:
+      - valid_values:
+          - dthnbr1
+          - dtnsbr1
+
+  devices:
+    type: list
+    description: >
+      List of devices to attach (support for serial and usb)
+
+      example:
+
+      [{"type": "usb", "vendor_id": "0x1d6b", "product_id": "0x0002"},
+
+      {"type": "serial", "path": "/dev/ttyS1", "port": "1"}]
+
+  ece_storage_path:
+    display_label: ECE Storage path
+    type: string
+
+  image_name:
+    display_label: Image  Name
+    type: string
+
+  system_rescue_image_name:
+    display_label: System rescue image name
+    type: string
+
+  image_url:
+    display_label: Image Artifactory Url
+    type: string
+
+  system_rescue_image_url:
+    display_label: System rescue image url
+    type: string
+
+  image_curl_config_secret_name:
+    display_label: Secret name with curl config image
+    type: string
+
+  system_rescue_image_curl_config_secret_name:
+    display_label: Secret name with curl config image
+    type: string
+
