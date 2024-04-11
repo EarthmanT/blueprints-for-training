@@ -1,0 +1,285 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  Blueprint creates a single VM on vSphere environment
+
+imports:
+  - nativeedge/types/types.yaml
+  - plugin:nativeedge-utilities-plugin
+  - inputs.yaml
+  - outputs.yaml
+blueprint_labels:
+
+  csys-obj-type:
+    values:
+      - environment
+
+  env:
+    values:
+      - vsphere
+
+  hidden:
+    values:
+      - 'true'
+labels:
+
+  csys-obj-type:
+    values:
+      - environment
+
+node_templates:
+
+  vm:
+    type: nativeedge.nodes.ServiceComponent
+    properties:
+      resource_config:
+        blueprint:
+          external_resource: true
+          id: Windows_Virtual_Machine_for_vSphere_2.0.0
+        deployment:
+          display_name: { concat: [{get_sys: [deployment, name]}, "-single-vm"] }
+          auto_inc_suffix: true
+          inputs:
+            vsphere_secret_name: { get_input: vsphere_secret_name }
+            template_name: { get_input: vm_template }
+            vm_name: { get_input: hostname }
+            vm_user_name: { get_input: vm_user_name }
+            vm_password_secret_name: { get_input: vm_password_secret_name }
+            vm_folder_name: { get_input: vm_folder }
+            datastore_name: { get_input: datastore_name }
+            allowed_esxi_hosts: { get_input: allowed_esxi_host }
+            vcpu: { get_input: vcpus }
+            memory_size: { get_input: memory_size }
+            os_disk_size: { get_input: os_disk_size }
+            disk_provisioning: { get_input: disk_provisioning }
+            storage_disk_size: { get_input: storage_disk_size }
+            disks_count: { get_input: disks_count }
+            storage_disk_provisioning: { get_input: storage_disk_provisioning }
+            networking: { get_input: network_mappings }
+            pci_devices: { get_input: pci_devices }
+            usb_devices: { get_input: usb_devices }
+            serial_ports: { get_input: serial_ports }
+            nics: { get_input: nics_device_list }
+
+inputs:
+
+  vsphere_secret_name:
+    type: secret_key
+    allow_update: false
+    display_label: vSphere Secret Name
+    description: Name of the secret storing vSphere connection details
+
+  vm_template:
+    type: string
+    allow_update: false
+    display_label: Template Name
+    description: >
+      Name of the Virtual Machine Template in vSphere.
+
+      Cannot contain leading or trailing spaces.
+
+  hostname:
+    type: string
+    allow_update: false
+    display_label: Hostname
+    description: Name of VM. Cannot contain "_".
+    constraints:
+      - pattern: ^([^_])*$
+
+  vm_user_name:
+    type: string
+    allow_update: false
+    display_label: VM User Name
+    description: Name of the user on the VM
+    required: true
+    default: Administrator
+
+  vm_password_secret_name:
+    type: secret_key
+    allow_update: false
+    display_label: User Password Secret Name
+    description: >
+      Secret name containing the user password for the Windows Virtual
+
+      Machine
+
+  vm_folder:
+    type: string
+    allow_update: false
+    display_label: Virtual Machine Folder Name
+    description: >
+      Name of the folder in vSphere to deploy a Virtual Machine in to.
+
+      Cannot contain leading or trailing spaces.
+
+  allowed_esxi_host:
+    type: list
+    allow_update: false
+    display_label: ESXi Hostnames
+    description: >
+      Names of the ESXi hosts on which the Virtual Machine should be
+
+      placed in vSphere.  Mandatory for USB passthrough.
+
+      Example: [node--01.example.local, node--02.example.local]
+    default: []
+
+  datastore_name:
+    type: string
+    allow_update: false
+    display_label: Datastore Name
+    description: >
+      The name of the Datastore to use with the Virtual Machine.
+
+      Example: VxRail-Virtual-SAN-Datastore-123abc
+
+  vcpus:
+    type: integer
+    display_label: Number of vCPUs
+    description: >
+      Number of virtual CPUs allocated to the Virtual Machine.
+
+      PTC recommendation:
+
+      https://support.ptc.com/help/thingworx/platform/r9/en/index.html#page/ThingWorx/Help/Installation/Sizing/select_hardware_sizing.html
+    default: 4
+
+  memory_size:
+    type: integer
+    display_label: Memory Size [MB]
+    description: >
+      Amount of memory (in MB) allocated to the Virtual Machine. See
+
+      https://support.ptc.com/help/thingworx/platform/r9/en/index.html#page/ThingWorx/Help/Installation/Sizing/select_hardware_sizing.html
+
+      for recommendations
+    default: 16384
+
+  os_disk_size:
+    type: integer
+    display_label: OS Disk Size [GB]
+    description: Main OS disk size in GB. Seehttps://support.ptc.com/help/thingworx/platform/r9/en/index.html#page/ThingWorx/Help/Installation/Sizing/select_hardware_sizing.htmlfor recommendations
+    default: 150
+    constraints:
+      - greater_or_equal: 150
+
+  disk_provisioning:
+    type: string
+    allow_update: false
+    display_label: Disk Provisioning Type
+    description: Disk provisioning type for Virtual Machine in vSphere
+    constraints:
+      - valid_values:
+          - thickLazyZeroed
+          - thickEagerZeroed
+          - thin
+
+  storage_disk_size:
+    type: integer
+    display_label: Storage Disk [GB]
+    description: Additional disks size in GB
+    default: 0
+
+  disks_count:
+    type: integer
+    allow_update: false
+    display_label: Storage Disks Count
+    description: Number of additional disks attached to the VM
+    default: 0
+    constraints:
+      - in_range:
+          - 0
+          - 1
+
+  storage_disk_provisioning:
+    type: string
+    allow_update: false
+    display_label: Storage Disk Provisioning Type
+    description: Storage Disk provisioning type for VM in vSphere
+    default: thin
+    constraints:
+      - valid_values:
+          - thick
+          - thin
+
+  network_mappings:
+    type: dict
+    display_label: Network Mappings
+    description: >
+      Array of key-value details for the OVF network setup.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option
+
+  pci_devices:
+    type: list
+    allow_update: false
+    display_label: PCI Devices List
+    description: >
+      List of PCI Devices that will be created and attached to the
+
+      Virtual Machine. See blueprint documentation for more details on
+
+      the correct formatting for this option.
+    default: []
+
+  usb_devices:
+    type: list
+    display_label: USB Devices List
+    description: >
+      List of USB Devices that will be created and attached to the
+
+      Virtual Machine. See blueprint documentation for more details on
+
+      the correct formatting for this option.
+    default: []
+
+  serial_ports:
+    type: list
+    display_label: Serial Ports
+    description: >
+      A list of serial ports to pass through to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: []
+
+  nics_device_list:
+    type: list
+    display_label: NICs Devices List
+    description: >
+      List of NIC Devices that will be created and attached to the
+
+      Virtual Machine. See blueprint documentation for more details on
+
+      the correct formatting for this option.
+    default: []
+capabilities:
+
+  ip:
+    description: IP Address
+    value:
+      - { get_attribute: ["vm", "capabilities", "vm_host"] }
+
+  internal_ip:
+    description: Local IP Address
+    value:
+      - { get_attribute: ["vm", "capabilities", "vm_host"] }
+
+  ports:
+    description: winrm ports
+    value:
+      - { get_attribute: ["vm", "capabilities", "vm_winrm_port"] }
+
+  names:
+    description: VM Name
+    value:
+      thingworx_vm: { get_attribute: ["vm", "capabilities", "vm_name"] }
+
+  usernames:
+    description: VM User Name
+    value:
+      - { get_attribute: ["vm", "capabilities", "vm_username"] }
+
