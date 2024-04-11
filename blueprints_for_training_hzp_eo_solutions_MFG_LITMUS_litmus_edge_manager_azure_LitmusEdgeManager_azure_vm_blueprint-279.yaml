@@ -1,0 +1,620 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  This blueprint creates a VM on Azure with Litmus Edge Manager.
+
+imports:
+  - nativeedge/types/types.yaml
+  - plugin:nativeedge-azure-plugin
+  - plugin:nativeedge-ansible-plugin
+  - plugin:nativeedge-utilities-plugin
+  - types.yaml
+
+labels:
+
+  csys-obj-type:
+    values:
+      - service
+
+inputs:
+
+  hostname:
+    display_label: Hostname
+    type: string
+    default: { get_sys: ["deployment", "name"] }
+
+  dhcp:
+    display_label: Use DHCP
+    type: boolean
+    default: true
+
+  dns:
+    display_label: List of DNS servers
+    type: list
+    item_type: string
+    default:
+      - 10.239.37.30
+      - 172.20.7.254
+
+  static_ip:
+    display_label: Static IP Address
+    description: >
+      Example: 172.20.6.154/21
+    type: string
+    default: 172.20.6.154/21
+    constraints:
+      - pattern: ^([0-9]{1,3}\.){3}[0-9]{1,3}(\/([0-9]|[1-2][0-9]|3[0-2]))?$
+
+  gateway:
+    display_label: Gateway IP Address
+    type: string
+    default: 172.20.7.254
+    constraints:
+      - pattern: ^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$
+
+  vm_size:
+    type: string
+    display_label: VM Size
+    description: VM size name, e.g. 'Standard_M8ms'
+    default: Standard_B4ms
+
+  location:
+    type: string
+    display_label: Location
+    description: Select Azure location name
+    default: southcentralus
+
+  admin_ssh_key_name:
+    type: string
+    display_label: Admin SSH Key Name
+    description: Enter name of the secret holding SSH key
+    default: lem_ssh_key
+
+  license_activation_key:
+    display_label: License Activation Key
+    type: string
+    default: 3166-6657-9486-3504
+
+  resource_group:
+    display_label: Resource Group
+    type: nativeedge.datatypes.azure.input.ResourceGroup
+    default:
+      name: { concat: [{get_input: hostname}, "RG"] }
+
+  network:
+    display_label: Network
+    type: nativeedge.datatypes.azure.input.Network
+    default:
+      name: scus-cloudcore-vnet
+      resource_group_name: Management
+
+  subnet:
+    display_label: Subnet
+    type: nativeedge.datatypes.azure.input.Subnet
+    default:
+      name: scus-cloudcore-subnet
+      resource_group_name: Management
+
+dsl_definitions:
+
+  azure_credentials:
+    subscription_id: { get_secret: ["azure", "subscription_id"] }
+    tenant_id: { get_secret: ["azure", "tenant_id"] }
+    client_id: { get_secret: ["azure", "client_id"] }
+    client_secret: { get_secret: ["azure", "client_secret"] }
+
+node_templates:
+
+  ansible_config:
+    type: nativeedge.nodes.ansible.Ansible
+
+  ssh_key:
+    type: nativeedge.nodes.keys.RSAKey
+    properties:
+      resource_config:
+        key_name: { get_input: admin_ssh_key_name }
+        openssh_format: true
+      use_secret_store: true
+      use_secrets_if_exist: true
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: keys.nativeedge_ssh_key.operations.create
+          inputs:
+            store_private_key_material: true
+
+  resource_group:
+    type: nativeedge.nodes.azure.ResourceGroup
+    properties:
+      use_external_resource: false
+      client_config:
+        subscription_id: { get_secret: ["azure", "subscription_id"] }
+        tenant_id: { get_secret: ["azure", "tenant_id"] }
+        client_id: { get_secret: ["azure", "client_id"] }
+        client_secret: { get_secret: ["azure", "client_secret"] }
+      name: { get_input: ["resource_group", "name"] }
+      location: { get_input: location }
+
+  network:
+    type: nativeedge.nodes.azure.network.VirtualNetwork
+    properties:
+      use_external_resource: true
+      client_config:
+        subscription_id: { get_secret: ["azure", "subscription_id"] }
+        tenant_id: { get_secret: ["azure", "tenant_id"] }
+        client_id: { get_secret: ["azure", "client_id"] }
+        client_secret: { get_secret: ["azure", "client_secret"] }
+      name: { get_input: ["network", "name"] }
+      location: { get_input: location }
+      resource_group_name: { get_input: ["network", "resource_group_name"] }
+
+  subnet:
+    type: nativeedge.nodes.azure.network.Subnet
+    properties:
+      use_external_resource: true
+      client_config:
+        subscription_id: { get_secret: ["azure", "subscription_id"] }
+        tenant_id: { get_secret: ["azure", "tenant_id"] }
+        client_id: { get_secret: ["azure", "client_id"] }
+        client_secret: { get_secret: ["azure", "client_secret"] }
+      name: { get_input: ["subnet", "name"] }
+      location: { get_input: location }
+      resource_group_name: { get_input: ["subnet", "resource_group_name"] }
+    relationships:
+      - type: nativeedge.relationships.azure.contained_in_virtual_network
+        target: network
+
+  ip_config:
+    type: nativeedge.nodes.azure.network.IPConfiguration
+    properties:
+      client_config:
+        subscription_id: { get_secret: ["azure", "subscription_id"] }
+        tenant_id: { get_secret: ["azure", "tenant_id"] }
+        client_id: { get_secret: ["azure", "client_id"] }
+        client_secret: { get_secret: ["azure", "client_secret"] }
+      location: { get_input: location }
+      resource_config:
+        privateIPAllocationMethod: Dynamic
+    relationships:
+      - type: nativeedge.relationships.azure.ip_configuration_connected_to_subnet
+        target: subnet
+
+  security_group:
+    type: nativeedge.nodes.azure.network.NetworkSecurityGroup
+    properties:
+      client_config:
+        subscription_id: { get_secret: ["azure", "subscription_id"] }
+        tenant_id: { get_secret: ["azure", "tenant_id"] }
+        client_id: { get_secret: ["azure", "client_id"] }
+        client_secret: { get_secret: ["azure", "client_secret"] }
+      name: { concat: [{get_input: hostname}, "-sg"] }
+      location: { get_input: location }
+      resource_config:
+        securityRules:
+          - name: MQTTS
+            properties:
+              priority: 1010
+              protocol: TCP
+              access: Allow
+              direction: Inbound
+              sourceApplicationSecurityGroups: []
+              destinationApplicationSecurityGroups: []
+              sourceAddressPrefix: '*'
+              sourcePortRange: '*'
+              destinationAddressPrefix: '*'
+              destinationPortRange: '8883'
+          - name: HTTPS
+            properties:
+              priority: 1020
+              protocol: TCP
+              access: Allow
+              direction: Inbound
+              sourceApplicationSecurityGroups: []
+              destinationApplicationSecurityGroups: []
+              sourceAddressPrefix: '*'
+              sourcePortRange: '*'
+              destinationAddressPrefix: '*'
+              destinationPortRange: '443'
+          - name: HTTP
+            properties:
+              priority: 1030
+              protocol: TCP
+              access: Allow
+              direction: Inbound
+              sourceApplicationSecurityGroups: []
+              destinationApplicationSecurityGroups: []
+              sourceAddressPrefix: '*'
+              sourcePortRange: '*'
+              destinationAddressPrefix: '*'
+              destinationPortRange: '80'
+          - name: Admin_Console
+            properties:
+              priority: 1040
+              protocol: TCP
+              access: Allow
+              direction: Inbound
+              sourceApplicationSecurityGroups: []
+              destinationApplicationSecurityGroups: []
+              sourceAddressPrefix: '*'
+              sourcePortRange: '*'
+              destinationAddressPrefix: '*'
+              destinationPortRange: '8446'
+          - name: LEM_REMOTE
+            properties:
+              priority: 1050
+              protocol: UDP
+              access: Allow
+              direction: Inbound
+              sourceApplicationSecurityGroups: []
+              destinationApplicationSecurityGroups: []
+              sourceAddressPrefix: '*'
+              sourcePortRange: '*'
+              destinationAddressPrefix: '*'
+              destinationPortRange: '51820'
+          - name: SSH
+            properties:
+              priority: 1060
+              protocol: TCP
+              access: Allow
+              direction: Inbound
+              sourceApplicationSecurityGroups: []
+              destinationApplicationSecurityGroups: []
+              sourceAddressPrefix: 172.20.0.0/21
+              sourcePortRange: '*'
+              destinationAddressPrefix: 172.20.0.0/21
+              destinationPortRange: '22'
+          - name: KAFKA_PLAIN
+            properties:
+              priority: 1070
+              protocol: TCP
+              access: Allow
+              direction: Inbound
+              sourceApplicationSecurityGroups: []
+              destinationApplicationSecurityGroups: []
+              sourceAddressPrefix: '*'
+              sourcePortRange: '*'
+              destinationAddressPrefix: '*'
+              destinationPortRange: '9092'
+          - name: KAFKA_SSL
+            properties:
+              priority: 1080
+              protocol: TCP
+              access: Allow
+              direction: Inbound
+              sourceApplicationSecurityGroups: []
+              destinationApplicationSecurityGroups: []
+              sourceAddressPrefix: '*'
+              sourcePortRange: '*'
+              destinationAddressPrefix: '*'
+              destinationPortRange: '9093'
+          - name: CLICKHOUSE_HTTP
+            properties:
+              priority: 1090
+              protocol: TCP
+              access: Allow
+              direction: Inbound
+              sourceApplicationSecurityGroups: []
+              destinationApplicationSecurityGroups: []
+              sourceAddressPrefix: '*'
+              sourcePortRange: '*'
+              destinationAddressPrefix: '*'
+              destinationPortRange: '8123'
+          - name: CLICKHOUSE_HTTPS
+            properties:
+              priority: 1100
+              protocol: TCP
+              access: Allow
+              direction: Inbound
+              sourceApplicationSecurityGroups: []
+              destinationApplicationSecurityGroups: []
+              sourceAddressPrefix: '*'
+              sourcePortRange: '*'
+              destinationAddressPrefix: '*'
+              destinationPortRange: '8543'
+          - name: CLICKHOUSE_NATIVE
+            properties:
+              priority: 1110
+              protocol: TCP
+              access: Allow
+              direction: Inbound
+              sourceApplicationSecurityGroups: []
+              destinationApplicationSecurityGroups: []
+              sourceAddressPrefix: '*'
+              sourcePortRange: '*'
+              destinationAddressPrefix: '*'
+              destinationPortRange: '9000'
+          - name: CLICKHOUSE_MYSQL
+            properties:
+              priority: 1120
+              protocol: TCP
+              access: Allow
+              direction: Inbound
+              sourceApplicationSecurityGroups: []
+              destinationApplicationSecurityGroups: []
+              sourceAddressPrefix: '*'
+              sourcePortRange: '*'
+              destinationAddressPrefix: '*'
+              destinationPortRange: '9004'
+          - name: NTP
+            properties:
+              priority: 1130
+              protocol: UDP
+              access: Allow
+              direction: Inbound
+              sourceApplicationSecurityGroups: []
+              destinationApplicationSecurityGroups: []
+              sourceAddressPrefix: '*'
+              sourcePortRange: '*'
+              destinationAddressPrefix: '*'
+              destinationPortRange: '123'
+          - name: Prometheus
+            properties:
+              priority: 1140
+              protocol: TCP
+              access: Allow
+              direction: Inbound
+              sourceApplicationSecurityGroups: []
+              destinationApplicationSecurityGroups: []
+              sourceAddressPrefix: '*'
+              sourcePortRange: '*'
+              destinationAddressPrefix: '*'
+              destinationPortRange: '9090'
+    relationships:
+      - type: nativeedge.relationships.azure.contained_in_resource_group
+        target: resource_group
+
+  nic:
+    type: nativeedge.nodes.azure.network.NetworkInterfaceCard
+    properties:
+      client_config:
+        subscription_id: { get_secret: ["azure", "subscription_id"] }
+        tenant_id: { get_secret: ["azure", "tenant_id"] }
+        client_id: { get_secret: ["azure", "client_id"] }
+        client_secret: { get_secret: ["azure", "client_secret"] }
+      location: { get_input: location }
+    relationships:
+      - type: nativeedge.relationships.azure.contained_in_resource_group
+        target: resource_group
+      - type: nativeedge.relationships.azure.nic_connected_to_network_security_group
+        target: security_group
+      - type: nativeedge.relationships.azure.nic_connected_to_ip_configuration
+        target: ip_config
+
+  vm:
+    type: nativeedge.nodes.azure.compute.VirtualMachine
+    properties:
+      client_config:
+        subscription_id: { get_secret: ["azure", "subscription_id"] }
+        tenant_id: { get_secret: ["azure", "tenant_id"] }
+        client_id: { get_secret: ["azure", "client_id"] }
+        client_secret: { get_secret: ["azure", "client_secret"] }
+      agent_config:
+        install_method: none
+      name: { get_input: hostname }
+      location: { get_input: location }
+      os_family: linux
+      use_public_ip: true
+      plan:
+        name: { get_secret: ["lem_az_image_ref", "sku"] }
+        publisher: { get_secret: ["lem_az_image_ref", "publisher"] }
+        product: { get_secret: ["lem_az_image_ref", "offer"] }
+      resource_config:
+        hardwareProfile:
+          vmSize: { get_input: vm_size }
+        storageProfile:
+          osDisk:
+            createOption: fromImage
+            managedDisk:
+              storageAccountType: Premium_LRS
+            deleteOption: Delete
+          imageReference:
+            publisher: { get_secret: ["lem_az_image_ref", "publisher"] }
+            offer: { get_secret: ["lem_az_image_ref", "offer"] }
+            sku: { get_secret: ["lem_az_image_ref", "sku"] }
+            version: { get_secret: ["lem_az_image_ref", "version"] }
+        osProfile:
+          computerName: { get_property: ["SELF", "name"] }
+          adminUsername: em_setup
+          linuxConfiguration:
+            ssh:
+              publicKeys:
+                - keyData: { get_attribute: ["ssh_key", "public_key_export"] }
+                  path: /home/em_setup/.ssh/authorized_keys
+            disablePasswordAuthentication: true
+    relationships:
+      - type: nativeedge.relationships.azure.contained_in_resource_group
+        target: resource_group
+      - type: nativeedge.relationships.azure.connected_to_nic
+        target: nic
+      - type: nativeedge.relationships.depends_on
+        target: ssh_key
+
+  init_config:
+    type: nativeedge.nodes.ansible.Executor
+    properties:
+      ansible_external_venv: { get_attribute: ["ansible_config", "playbook_venv"] }
+      playbook_path: playbooks/init_config/main.yml
+      run_data:
+        IP: { get_attribute: ["vm", "ip"] }
+        PORT: { get_secret: ["litmus_edge_manager", "port"] }
+        ADMIN_USER: { get_secret: ["litmus_edge_manager", "admin_user"] }
+        ADMIN_DEFAULT_PASSWD: { get_secret: ["litmus_edge_manager", "admin_default_passwd"] }
+        ADMIN_PASSWD: { get_secret: ["litmus_edge_manager", "admin_passwd"] }
+        VALIDATE_CERTS: false
+        USE_DHCP: { get_input: dhcp }
+        STATIC_IP: { get_input: static_ip }
+        GATEWAY: { get_input: gateway }
+        DNS_SERVERS: { get_input: dns }
+      sources:
+        all:
+          hosts:
+            localhost:
+              ansible_host: 127.0.0.1
+              ansible_connection: local
+            lem:
+              ansible_host: { get_attribute: ["vm", "ip"] }
+              ansible_user: { get_secret: ["litmus_edge_manager", "ssh_user"] }
+              ansible_ssh_private_key_file: { get_attribute: ["ssh_key", "private_key_export"] }
+              ansible_become: true
+              ansible_ssh_common_args: -o StrictHostKeyChecking=no -o ProxyCommand='ssh -i /opt/manager/resources/nativeedge_agent/jh_rsa -q -W %h:%p azureuser@10.164.109.48'
+      store_facts: false
+      log_stdout: false
+    relationships:
+      - type: nativeedge.relationships.connected_to
+        target: ansible_config
+      - type: nativeedge.relationships.connected_to
+        target: vm
+
+  advanced_config:
+    type: nativeedge.nodes.ansible.Executor
+    properties:
+      ansible_external_venv: { get_attribute: ["ansible_config", "playbook_venv"] }
+      playbook_path: playbooks/advanced_config/main.yml
+      run_data:
+        IP: { get_attribute: ["vm", "ip"] }
+        PORT: { get_secret: ["litmus_edge_manager", "port"] }
+        ADMIN_PASSWD: { get_secret: ["litmus_edge_manager", "admin_passwd"] }
+        VALIDATE_CERTS: false
+        LICENSE_ACTIVATION_KEY: { get_input: license_activation_key }
+      sources:
+        all:
+          hosts:
+            localhost:
+              ansible_host: 127.0.0.1
+              ansible_connection: local
+            lem:
+              ansible_host: { get_attribute: ["vm", "ip"] }
+              ansible_user: { get_secret: ["litmus_edge_manager", "ssh_user"] }
+              ansible_ssh_private_key_file: { get_attribute: ["ssh_key", "private_key_export"] }
+              ansible_become: true
+              ansible_ssh_common_args: -o StrictHostKeyChecking=no -o ProxyCommand='ssh -i /opt/manager/resources/nativeedge_agent/jh_rsa -q -W %h:%p azureuser@10.164.109.48'
+      store_facts: false
+      log_stdout: false
+      ansible_env_vars:
+        ANSIBLE_HOST_KEY_CHECKING: 'False'
+        ANSIBLE_INVALID_TASK_ATTRIBUTE_FAILED: 'False'
+        ANSIBLE_STDOUT_CALLBACK: json
+        ANSIBLE_FACT_PATH: { concat: ["/tmp/", {get_sys: [deployment, id]}, "/facts.d"] }
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        poststart:
+          implementation: scripts/license/save_request.sh
+          inputs:
+            OFFLINE_ACTIVATION_REQUEST_FACT: offline_activation_request.fact
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: ansible_config
+      - type: nativeedge.relationships.connected_to
+        target: vm
+      - type: nativeedge.relationships.connected_to
+        target: init_config
+
+  license_activation:
+    type: nativeedge.nodes.ansible.Executor
+    properties:
+      ansible_external_venv: { get_attribute: ["ansible_config", "playbook_venv"] }
+      playbook_path: playbooks/advanced_config/activate_license.yml
+      run_data:
+        IP: { get_attribute: ["vm", "ip"] }
+        PORT: { get_secret: ["litmus_edge_manager", "port"] }
+        ADMIN_PASSWD: { get_secret: ["litmus_edge_manager", "admin_passwd"] }
+        VALIDATE_CERTS: false
+        OFFLINE_ACTIVATION_KEY: null
+      sources:
+        all:
+          hosts:
+            localhost:
+              ansible_host: 127.0.0.1
+              ansible_connection: local
+      store_facts: false
+      log_stdout: false
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start: {}
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: ansible_config
+      - type: nativeedge.relationships.connected_to
+        target: vm
+      - type: nativeedge.relationships.connected_to
+        target: advanced_config
+capabilities:
+
+  ip:
+    description: Litmus Edge Manager IP Address
+    value: { get_attribute: ["vm", "ip"] }
+
+  url:
+    description: Litmus Edge Manager Admin Console URL
+    value: { concat: ["https://", {get_attribute: [vm, ip]}] }
+
+  admin_url:
+    description: Litmus Edge Manager Admin Console URL
+    value: { concat: ["https://", {get_attribute: [vm, ip]}, ":", {get_secret: [litmus_edge_manager, port]}, "/"] }
+
+  offline_activation_request:
+    description: Offline Activation Request
+    value: { get_attribute: ["advanced_config", "facts", "ansible_local", "offline_activation_request"] }
+workflows:
+
+  Apply_License:
+    mapping: nativeedge_custom_workflow.nativeedge_custom_workflow.tasks.customwf
+    parameters:
+      nodes_to_runon:
+        default:
+          - license_activation
+      operations_to_execute:
+        default:
+          - ansible.reload
+      allow_kwargs_override:
+        default: true
+      ansible_external_venv:
+        default: { get_property: ["license_activation", "ansible_external_venv"] }
+      playbook_path:
+        default: playbooks/advanced_config/activate_license.yml
+      run_data:
+        default:
+          IP: { get_property: ["license_activation", "run_data", "IP"] }
+          ADMIN_PASSWD: { get_property: ["license_activation", "run_data", "ADMIN_PASSWD"] }
+          VALIDATE_CERTS: { get_property: ["license_activation", "run_data", "VALIDATE_CERTS"] }
+          OFFLINE_ACTIVATION_KEY: CHANGE_ME
+      sources:
+        default:
+          all:
+            hosts:
+              localhost:
+                ansible_host: 127.0.0.1
+                ansible_connection: local
+      store_facts:
+        default: false
+      log_stdout:
+        default: false
+data_types:
+
+  nativeedge.datatypes.azure.input.ResourceGroup:
+    description: Resource Group Config
+    properties:
+      name:
+        description: Name of the resource group
+        type: string
+
+  nativeedge.datatypes.azure.input.Network:
+    description: Virtual Network Config
+    properties:
+      name:
+        description: Name of the virtual network
+        type: string
+      resource_group_name:
+        description: Name of the resource group where vnet exists
+        type: string
+
+  nativeedge.datatypes.azure.input.Subnet:
+    description: Virtual Subnet Config
+    properties:
+      name:
+        description: Name of the virtual subnet
+        type: string
+      resource_group_name:
+        description: Name of the resource group where subnet exists
+        type: string
+

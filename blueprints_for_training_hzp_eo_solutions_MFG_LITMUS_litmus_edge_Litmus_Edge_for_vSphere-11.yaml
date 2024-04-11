@@ -1,0 +1,619 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  This blueprint creates a VM on vSphere with Litmus Edge.
+
+imports:
+  - nativeedge/types/types.yaml
+  - eo/inputs.yaml
+  - eo/outputs.yaml
+  - eo/inputs_common.yaml
+  - eo/definitions.yaml
+  - eo/types.yaml
+  - external/vsphere_vm/inputs.yaml
+  - external/vsphere_vm/inputs_common.yaml
+  - external/vsphere_vm/definitions.yaml
+  - plugin:nativeedge-ansible-plugin
+labels:
+
+  csys-obj-type:
+    values:
+      - environment
+
+  target_environment:
+    values:
+      - vsphere
+
+  vendor:
+    values:
+      - litmus
+
+  solution:
+    values:
+      - litmus-edge
+
+  version:
+    values:
+      - 3.5.2
+blueprint_labels:
+
+  env:
+    values:
+      - vsphere
+
+inputs:
+
+  mqtt_details_secret_name:
+    display_label: MQTT Broker Config Secret Name
+    type: secret_key
+    allow_update: false
+    description: >
+      Secret name containing the MQTT Broker endpoint details. Example value:
+
+      {
+        ip: ""
+        port: ""
+        fqdn: ""
+        collector_name: ""
+        ca_cert: ""
+        username: ""
+        password: ""
+        topic: ""
+      }
+
+  litmus_edge_details_secret_name:
+    display_label: Deployment Management User Secret
+    type: secret_key
+    allow_update: false
+    description: >
+      Secret name containing the deployment manager user credentials. Example value:
+        {
+          "eo_user": "admin",
+          "eo_passwd": "litmusedge",
+          "admin_passwd": "NEWp@ssword"
+        }
+
+  gateway:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Gateway IP Address
+    description: IP Address of the Network Gateway.
+    required: false
+    constraints:
+      - pattern: ^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$|^$
+        error_message: >
+          Invalid format for IP Address.
+
+          Example: 172.16.0.1
+
+  dns:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: DNS Servers
+    description: List of DNS servers addresses.
+    required: false
+
+  dhcp:
+    type: boolean
+    hidden: false
+    allow_update: false
+    display_label: DHCP
+    description: >
+      Enable to allow IP configuration to be taken from DHCP
+
+      instead of static IP settings.
+    default: true
+
+  static_ip:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Static IP and Mask Suffix
+    description: >
+      IP address and suffix. Example: 172.16.0.1/16.
+
+      Only required for static IP deployments, not for DHCP.
+    required: false
+    constraints:
+      - pattern: ^((25[0-5]|2[0-4]\d|1\d\d|\d{1,2})(\.(\d{1,3})){3}(\/(3[0-2]|[12]?\d))?|)$
+        error_message: >
+          Invalid format for IP Address in CIDR format.
+
+          Example: 172.16.0.1/16
+
+  ansible_external_venv:
+    type: string
+    hidden: true
+    display_label: External Ansible Virtual Environment Path
+    default: /opt/ansible
+
+  cdrom_image_path:
+    allow_update: false
+    display_label: System Rescue CD-ROM Image Datastore Path
+    description: The full Datastore path of the System Rescue CD-ROM image thathas been uploaded to vSphere. Example:"[VxRail-Virtual-SAN-Datastore-123abc] abc123/cdrom_iso_systemrescue.iso"
+
+  vm_template:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Template Name
+    description: >
+      Name of the Virtual Machine Template in vSphere.
+
+      Cannot contain leading or trailing spaces.
+    constraints:
+      - pattern: ^(?!\s)(?!.*\s$).*$
+        error_message: Cannot contain leading or trailing spaces.
+
+  hostname:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Hostname
+    description: >
+      Hostname of the Virtual Machine
+
+      (an auto-generated suffix will also be added).
+
+      Cannot contain characters other than:
+
+      letters (a-z, A-Z), numbers (0-9), or hyphens (-).
+
+      Can be up to 63 characters long.
+    constraints:
+      - pattern: ^(?!-)[a-zA-Z0-9-]{1,63}(?<!-)$
+        error_message: >
+          Must be letters (a-z, A-Z), numbers (0-9), or hyphens (-).
+
+          No more than 64 characters.
+      - max_length: 64
+    default: levm
+
+  allowed_esxi_host:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: ESXi Hostnames
+    description: >
+      Names of the ESXi hosts on which the Virtual Machine should be placed.
+
+      Mandatory for USB passthrough.
+
+      Example: [node--01.example.local, node--02.example.local]
+    default: []
+
+  resource_pool_name:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Resource Pool
+    description: Name of the Resource Pool in vSphere.
+    constraints:
+      - pattern: ^(?!\s)(?!.*\s$).*$
+        error_message: Cannot contain leading or trailing spaces.
+
+  vm_folder:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: VM Folder
+    description: >
+      Name of the folder in vSphere to deploy a Virtual Machine in to.
+
+      Cannot contain leading or trailing spaces.
+    constraints:
+      - pattern: ^(?!\s)(?!.*\s$).*$
+        error_message: Cannot contain leading or trailing spaces.
+
+  datastore_name:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Datastore
+    description: >
+      Name of the Datastore to use with the Virtual Machine.
+
+      Cannot contain leading or trailing spaces.
+
+      Example: VxRail-Virtual-SAN-Datastore-123abc
+    constraints:
+      - pattern: ^(?!\s)(?!.*\s$).*$
+        error_message: >
+          Cannot contain leading or trailing spaces.
+
+          Example: VxRail-Virtual-SAN-Datastore-123abc
+
+  vcpus:
+    type: integer
+    hidden: false
+    display_label: vCPUs
+    description: >
+      Number of virtual CPUs allocated to the Virtual Machine.
+
+      See more about sizing recommendations:
+
+      https://docs.litmus.io/edgemanager/quickstart-guide/system-requirements
+    default: 4
+    constraints:
+      - greater_or_equal: 2
+
+  memory_size:
+    type: integer
+    hidden: false
+    display_label: Memory Size
+    description: >
+      Memory (in MB) allocated to the Virtual Machine.
+
+      See more about sizing recommendations:
+
+      https://docs.litmus.io/edgemanager/quickstart-guide/system-requirements
+    default: 4096
+    constraints:
+      - greater_or_equal: 2048
+
+  os_disk_size:
+    type: integer
+    hidden: false
+    display_label: OS Disk Size
+    description: >
+      Main OS disk size in GB.
+
+      See more about sizing recommendations:
+
+      https://docs.litmus.io/edgemanager/quickstart-guide/system-requirements
+    default: 50
+    constraints:
+      - greater_or_equal: 50
+
+  disk_provisioning:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Disk Provisioning Type
+    description: OS Disk provisioning type for Virtual Machine in vSphere.
+    default: thin
+    constraints:
+      - valid_values:
+          - thickLazyZeroed
+          - thickEagerZeroed
+          - thin
+
+  storage_disk_size:
+    type: integer
+    hidden: true
+    allow_update: false
+    display_label: Storage Disk Size [GB]
+    description: Additional disks size in GB.
+    default: 0
+
+  disks_count:
+    type: integer
+    hidden: true
+    allow_update: false
+    display_label: Storage Disks Count
+    description: Number of additional disks attached to the VM.
+    default: 0
+    constraints:
+      - in_range:
+          - 0
+          - 1
+
+  storage_disk_provisioning:
+    type: string
+    hidden: true
+    allow_update: false
+    display_label: Storage Disk Provisioning Type
+    description: Storage Disk provisioning type for VM in vSphere.
+    default: thin
+    constraints:
+      - valid_values:
+          - thick
+          - thin
+
+  network_switch_distributed:
+    type: boolean
+    hidden: false
+    allow_update: false
+    display_label: Network Switch Distributed
+    description: Enable a Switch Distributed Network
+    default: true
+
+  network_name:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Network Name
+    description: Network name specified in vSphere.
+    constraints:
+      - pattern: ^[a-zA-Z0-9_.-]+$
+        error_message: >
+          Must be letters (a-z, A-Z), numbers (0-9), underscores (_),
+
+          dots (.), or hyphens (-).
+
+  pci_devices:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: PCI Devices
+    description: >
+      List of PCI Devices that will be created and attached
+
+      to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: []
+
+  usb_devices:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: USB Devices
+    description: >
+      List of USB Devices that will be created and attached
+
+      to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: []
+
+  serial_ports:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: Serial Ports
+    description: >
+      A list of serial ports to pass through to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: []
+
+  vm_advanced_parameters:
+    type: dict
+    hidden: true
+    allow_update: false
+    display_label: Advanced Parameters
+    description: >
+      Any vSphere advanced parameters to apply to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: {}
+
+  cpu_hot_add:
+    type: boolean
+    hidden: true
+    display_label: CPU Hot Add Enabled
+    description: Enable CPU Hot Add for VM.
+    default: false
+
+  cpu_hot_remove:
+    type: boolean
+    hidden: true
+    display_label: CPU Hot Remove Enabled
+    description: Enable CPU Hot Remove for VM.
+    default: true
+
+  memory_hot_add:
+    type: boolean
+    hidden: true
+    display_label: Memory Hot Add Enabled
+    description: Enable Memory Hot Add for VM.
+    default: true
+
+  pci_turn_off_vm:
+    type: boolean
+    display_label: PCI turn on vm after attach
+    description: PCI turn off/on vm
+    default: true
+capabilities:
+
+  ip:
+    description: Litmus Edge IP Address
+    value: { get_attribute: ["sdp_client_id_and_read_ip", "vm_ip"] }
+
+  url:
+    description: Litmus Edge URL Address
+    value: { concat: ["https://", {get_attribute: [sdp_client_id_and_read_ip, vm_ip]}, "/"] }
+
+node_templates:
+
+  init_config:
+    type: nativeedge.nodes.ansible.Executor
+    properties:
+      ansible_external_venv: { get_input: ansible_external_venv }
+      playbook_path: eo/playbooks/init_config/main.yml
+      sensitive_keys:
+        - ADMIN_PASSWD
+        - ansible_password
+        - ansible_user
+        - ansible_ssh_private_key_file
+      run_data:
+        IP: { get_attribute: ["sdp_client_id_and_read_ip", "api_endpoint_before"] }
+        ADMIN_PASSWD: { get_secret: [{get_input: litmus_edge_details_secret_name}, "admin_passwd"] }
+        VALIDATE_CERTS: false
+        USE_DHCP: { get_input: dhcp }
+        STATIC_IP: { get_input: static_ip }
+        GATEWAY: { get_input: gateway }
+        DNS_SERVERS: { get_input: dns }
+      sources:
+        all:
+          hosts:
+            localhost:
+              ansible_host: 127.0.0.1
+              ansible_connection: local
+      store_facts: false
+      log_stdout: false
+    relationships:
+      - type: nativeedge.relationships.connected_to
+        target: vm
+      - type: nativeedge.relationships.depends_on
+        target: sdp_client_id_and_read_ip
+
+  advanced_config:
+    type: nativeedge.nodes.ansible.Executor
+    properties:
+      ansible_external_venv: { get_input: ansible_external_venv }
+      playbook_path: eo/playbooks/advanced_config/main.yml
+      sensitive_keys:
+        - ADMIN_PASSWD
+        - ansible_password
+        - ansible_user
+        - ansible_ssh_private_key_file
+        - MQTT_CONFIG
+      run_data:
+        IP: { get_attribute: ["sdp_client_id_and_read_ip", "api_endpoint_after"] }
+        ADMIN_PASSWD: { get_secret: [{get_input: litmus_edge_details_secret_name}, "admin_passwd"] }
+        VALIDATE_CERTS: false
+        MQTT_IP: { get_secret: [{get_input: mqtt_details_secret_name}, "ip"] }
+        MQTT_CONFIG:
+          port: { get_secret: [{get_input: mqtt_details_secret_name}, "port"] }
+          hostname: { get_secret: [{get_input: mqtt_details_secret_name}, "fqdn"] }
+          name: { get_secret: [{get_input: mqtt_details_secret_name}, "collector_name"] }
+          caCert: { get_secret: [{get_input: mqtt_details_secret_name}, "ca_cert"] }
+          clientId: { get_attribute: ["sdp_client_id_and_read_ip", "client_id"] }
+          username: { get_secret: [{get_input: mqtt_details_secret_name}, "username"] }
+          password: { get_secret: [{get_input: mqtt_details_secret_name}, "password"] }
+          topic: { get_secret: [{get_input: mqtt_details_secret_name}, "topic"] }
+      sources:
+        all:
+          hosts:
+            localhost:
+              ansible_host: 127.0.0.1
+              ansible_connection: local
+      store_facts: false
+      log_stdout: false
+      ansible_env_vars:
+        ANSIBLE_HOST_KEY_CHECKING: 'False'
+        ANSIBLE_INVALID_TASK_ATTRIBUTE_FAILED: 'False'
+        ANSIBLE_STDOUT_CALLBACK: json
+        ANSIBLE_FACT_PATH: { concat: [{get_input: ansible_external_venv}, "/facts.d/", {get_sys: [deployment, id]}] }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: init_config
+      - type: nativeedge.relationships.connected_to
+        target: vm
+      - type: nativeedge.relationships.depends_on
+        target: sdp_client_id_and_read_ip
+
+  vm:
+    type: nativeedge.nodes.ServiceComponent
+    properties:
+      resource_config:
+        blueprint:
+          external_resource: true
+          id: Virtual_Machine_with_cdrom_for_vSphere_2.0.0
+        deployment:
+          id: ''
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        configure:
+          inputs:
+            timeout: 1800
+            resource_config:
+              blueprint: { get_property: ["SELF", "resource_config", "blueprint"] }
+              deployment:
+                display_name: { concat: [{get_sys: [deployment, id]}, "_vm"] }
+                inputs:
+                  vsphere_secret_name: { get_environment_capability: vcenter_credentials }
+                  template_name: { get_input: vm_template }
+                  cdrom_image: { get_input: cdrom_image_path }
+                  hostname: { get_input: hostname }
+                  allowed_esxi_hosts: { get_input: allowed_esxi_host }
+                  resource_pool_name: { get_input: resource_pool_name }
+                  vm_folder_name: { get_input: vm_folder }
+                  datastore_name: { get_input: datastore_name }
+                  vcpu: { get_input: vcpus }
+                  memory_size: { get_input: memory_size }
+                  os_disk_size: { get_input: os_disk_size }
+                  disk_provisioning: { get_input: disk_provisioning }
+                  storage_disk_size: { get_input: storage_disk_size }
+                  disks_count: { get_input: disks_count }
+                  storage_disk_provisioning: { get_input: storage_disk_provisioning }
+                  networking: {}
+                  pci_devices: { get_input: pci_devices }
+                  usb_devices: { get_input: usb_devices }
+                  serial_ports: { get_input: serial_ports }
+                  nics:
+                    - network_name: { get_input: network_name }
+                      external_network_distributed: { get_input: network_switch_distributed }
+                      adapter_type: E1000
+                      network_management: true
+                      external_network: true
+                      dhcp_network: true
+                  boot_order:
+                    - cdrom
+                    - disk
+                  disk_keys: []
+                  ethernet_keys: []
+                  vm_advanced_parameters: { get_input: vm_advanced_parameters }
+                  cpu_hot_add: { get_input: cpu_hot_add }
+                  cpu_hot_remove: { get_input: cpu_hot_remove }
+                  memory_hot_add: { get_input: memory_hot_add }
+                  pci_turn_off_vm: { get_input: pci_turn_off_vm }
+
+  sdp_client_id_and_read_ip:
+    type: nativeedge.nodes.Root
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        configure:
+          implementation: eo/scripts/sdp/generate_client_id.py
+          executor: central_deployment_agent
+        start:
+          implementation: eo/scripts/vm/get_ip.py
+          executor: central_deployment_agent
+          inputs:
+            DHCP: { get_input: dhcp }
+            IP: { get_attribute: ["vm", "capabilities", "vm_ip"] }
+            STATIC_IP: { get_input: static_ip }
+            API_ENDPOINT: ''
+    relationships:
+      - target: vm
+        type: nativeedge.relationships.depends_on
+data_types:
+
+  nativeedge.datatypes.Litmus.MQTTBroker:
+    description: MQTT Broker Configuration
+    properties:
+      ip:
+        description: MQTT Broker IP Address
+        type: string
+        default: ''
+      port:
+        description: MQTT Broker Port
+        type: integer
+        default: 8883
+      fqdn:
+        description: MQTT Broker FQDN
+        type: string
+        default: ''
+      collector_name:
+        description: MQTT Broker Collector Name
+        type: string
+        default: ''
+      ca_cert:
+        description: MQTT Broker CA Certificate
+        type: string
+        default: ''
+      username:
+        description: MQTT Broker Username
+        type: string
+        default: ''
+      password:
+        description: MQTT Broker Password
+        type: string
+        default: ''
+      topic:
+        description: MQTT Broker Integration Topic
+        type: string
+        default: ''
+
