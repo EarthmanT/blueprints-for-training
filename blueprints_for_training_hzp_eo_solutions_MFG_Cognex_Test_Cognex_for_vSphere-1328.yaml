@@ -1,0 +1,792 @@
+tosca_definitions_version: nativeedge_1_0
+
+description: >
+  Blueprint creates a Windows VM in vSphere environment and installs Cognex Software on top of it using Ansible.
+
+imports:
+  - nativeedge/types/types.yaml
+  - application/inputs.yaml
+  - application/inputs_common.yaml
+  - tests/application/blueprint.yaml
+  - infrastructure/vsphere_vm/inputs_common.yaml
+  - tests/infrastructure/blueprint_vsphere.yaml
+  - application/outputs.yaml
+  - infrastructure/vsphere_vm/outputs.yaml
+
+labels:
+
+  csys-obj-type:
+    values:
+      - environment
+
+  target_environment:
+    values:
+      - vsphere
+
+  vendor:
+    values:
+      - cognex
+
+  solution:
+    values:
+      - visionpro
+      - vidi
+      - designer
+
+  version:
+    values:
+      - 'visionpro: 9.8'
+      - 'vidi: 4.1.3'
+      - 'designer: 4.4.1'
+blueprint_labels:
+
+  env:
+    values:
+      - vsphere
+
+dsl_definitions:
+
+  visionpro_installer_filename: VisionPro_9_8_64-bit.zip
+
+  vidi_installer_filename: Cognex ViDi Suite Installer v4.1.3.21525.exe
+
+  designer_installer_filename: Setup Cognex Designer (TM) 4.4.1.exe
+
+  drivers_tar_name: windows_gpu_drivers.zip
+
+  inputs:
+    ansible_external_venv: { get_input: ansible_external_venv }
+    sources: test
+    sensitive_keys: test
+    log_stdout: { get_input: ansible_log_stdout }
+    store_facts: false
+    debug_level: 0
+
+  windows_vm:
+    ansible_host: { get_attribute: ["vm", "capabilities", "vm_host"] }
+    ansible_port: { get_attribute: ["vm", "capabilities", "vm_winrm_port"] }
+    ansible_user: { get_attribute: ["vm", "capabilities", "vm_username"] }
+    ansible_password: { get_secret: {get_input: vm_password_secret_name} }
+    ansible_connection: winrm
+    ansible_winrm_scheme: http
+    ansible_winrm_transport: ntlm
+
+inputs:
+
+  deployment_variant:
+    type: string
+    allow_update: false
+    display_label: Deployment Variant
+    description: >
+      Choose the Deployment Variant to be installed
+
+      on the Virtual Machine
+    constraints:
+      - valid_values:
+          - Cognex VisionPro
+          - Cognex VisionPro + Designer
+          - Cognex VisionPro + Designer + Deep Learning
+
+  installation_files_dir:
+    type: string
+    display_label: Cognex Installation Files Target Directory
+    description: >
+      Directory where Cognex software installation files will be uploaded.
+    default: { concat: ["C:\\Users\\", {get_input: vm_user_name}, "\\Cognex_Installation"] }
+    hidden: true
+
+  installation_dir:
+    type: string
+    display_label: Cognex Installation Directory
+    description: >
+      Cognex software installation directory
+    default: C:\Program Files\Cognex
+    hidden: true
+
+  visionpro_installer_filename:
+    type: string
+    hidden: true
+    display_label: Cognex VisionPro Installer File Name
+    description: Cognex VisionPro Zip Installation Package File Name
+    default: VisionPro_9_8_64-bit.zip
+
+  vidi_installer_filename:
+    type: string
+    hidden: true
+    display_label: Cognex VisionPro Deep Learning (ViDi) Installer File Name
+    description: Cognex VisionPro Deep Learning (ViDi) Installer File Name
+    default: Cognex ViDi Suite Installer v4.1.3.21525.exe
+
+  designer_installer_filename:
+    type: string
+    hidden: true
+    display_label: Cognex Designer Installer File Name
+    description: Cognex Designer Installer File Name
+    default: Setup Cognex Designer (TM) 4.4.1.exe
+
+  driver_installers_zip_filename:
+    type: string
+    hidden: true
+    display_label: Name of tar file which include drivers to install
+    description: >
+      Name of tar file which include drivers to install.
+
+      User has to download drivers to .../drivers directory and make zip from it.
+    default: windows_gpu_drivers.zip
+
+  driver_installers_additional_parameters:
+    type: string
+    hidden: true
+    display_label: Parameters of driver installation scripts
+    description: >
+      Parameters of driver installation scripts
+
+      Will be passed to each file
+    default: -s
+
+  artifact_configuration_secret_name:
+    type: secret_key
+    hidden: false
+    allow_update: false
+    display_label: Artifact Configuration Secret Name
+    description: >
+      Secret name containing details needed for binary image and
+
+      artifacts download.
+
+  ansible_log_stdout:
+    type: boolean
+    hidden: true
+    display_label: Save Ansible Output to Logs
+    description: >
+      If enabled, the logs from Ansible Playbooks executions will be
+
+      propagated to the logs of the deployment. Only enable if necessary
+
+      as this option will slow down the overall execution. Please note
+
+      that in the case of any errors, logs from Ansible Playbooks
+
+      executions will still be visible even when this option disabled.
+    default: false
+
+  ansible_external_venv:
+    type: string
+    hidden: true
+    display_label: External Ansible Virtual Environment Path
+    default: /opt/ansible
+
+  ansible_censor_sensitive_data:
+    type: boolean
+    hidden: true
+    display_label: Ansible Censor Output in Logs
+    description: >
+      If enabled, the logs from Ansible Playbooks executions
+
+      will be censored.
+
+      All logs from tasks with sensitive data will be suppressed.
+
+      Can be disabled for debugging purposes.
+    default: true
+
+  vm_template:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Template Name
+    description: >
+      Name of the Virtual Machine Template in vSphere.
+
+      Cannot contain leading or trailing spaces.
+    constraints:
+      - pattern: ^(?!\s)(?!.*\s$).*$
+        error_message: Cannot contain leading or trailing spaces.
+
+  hostname:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Hostname
+    description: >
+      Hostname of the Virtual Machine
+
+      (an auto-generated suffix will also be added).
+
+      Cannot contain characters other than:
+
+      letters (a-z, A-Z), numbers (0-9), or hyphens (-).
+
+      Can be up to 63 characters long.
+    constraints:
+      - pattern: ^(?!-)[a-zA-Z0-9-]{1,63}(?<!-)$
+        error_message: >
+          Must be letters (a-z, A-Z), numbers (0-9), or hyphens (-).
+
+          No more than 64 characters.
+      - max_length: 64
+
+  vm_user_name:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Deployment User
+    description: >
+      Name of deployment user in the Virtual Machine template in vSphere.
+
+      Cannot contain leading or trailing spaces.
+    default: Administrator
+    constraints:
+      - pattern: ^(?!\s)(?!.*\s$).*$
+        error_message: Cannot contain leading or trailing spaces.
+
+  vm_password_secret_name:
+    type: secret_key
+    hidden: false
+    allow_update: false
+    display_label: Virtual Machine Password Secret Name
+    description: >
+      Secret name containing the user password for
+
+      the Windows Virtual Machine.
+
+  vm_folder:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: VM Folder
+    description: >
+      Name of the folder in vSphere to deploy a Virtual Machine in to.
+
+      Cannot contain leading or trailing spaces.
+    constraints:
+      - pattern: ^(?!\s)(?!.*\s$).*$
+        error_message: Cannot contain leading or trailing spaces.
+
+  datastore_name:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Datastore
+    description: >
+      Name of the Datastore to use with the Virtual Machine.
+
+      Cannot contain leading or trailing spaces.
+
+      Example: VxRail-Virtual-SAN-Datastore-123abc
+    constraints:
+      - pattern: ^(?!\s)(?!.*\s$).*$
+        error_message: >
+          Cannot contain leading or trailing spaces.
+
+          Example: VxRail-Virtual-SAN-Datastore-123abc
+
+  vcpus:
+    type: integer
+    hidden: false
+    display_label: vCPUs
+    description: >
+      Number of virtual CPUs allocated to the Virtual Machine.See
+
+      https://support.cognex.com/docs/vpro_0x091400/EN/VisionProQuickReference.pdf
+
+      and
+
+      https://support.cognex.com/docs/deep-learning_311/web/EN/deep-learning/Content/deep-learning-Topics/preparation/preparation.htm?tocpath=Preparation%7C_____0
+
+      for recommendations
+    default: 8
+    constraints:
+      - greater_or_equal: 2
+
+  memory_size:
+    type: integer
+    hidden: false
+    display_label: Memory Size
+    description: >
+      Memory (in MB) allocated to the Virtual Machine.See
+
+      https://support.cognex.com/docs/vpro_0x091400/EN/VisionProQuickReference.pdf
+
+      and
+
+      https://support.cognex.com/docs/deep-learning_311/web/EN/deep-learning/Content/deep-learning-Topics/preparation/preparation.htm?tocpath=Preparation%7C_____0
+
+      for recommendations
+    default: 8192
+    constraints:
+      - greater_or_equal: 4096
+
+  os_disk_size:
+    type: integer
+    hidden: false
+    display_label: OS Disk Size
+    description: >
+      Main OS disk size in GB.See
+
+      https://support.cognex.com/docs/vpro_0x091400/EN/VisionProQuickReference.pdf
+
+      and
+
+      https://support.cognex.com/docs/deep-learning_311/web/EN/deep-learning/Content/deep-learning-Topics/preparation/preparation.htm?tocpath=Preparation%7C_____0
+
+      for recommendations
+    default: 50
+    constraints:
+      - greater_or_equal: 25
+
+  disk_provisioning:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Disk Provisioning Type
+    description: OS Disk provisioning type for Virtual Machine in vSphere.
+    default: thin
+    constraints:
+      - valid_values:
+          - thickLazyZeroed
+          - thickEagerZeroed
+          - thin
+
+  storage_disk_size:
+    type: integer
+    hidden: true
+    allow_update: false
+    display_label: Storage Disk Size [GB]
+    description: Additional disks size in GB.
+    default: 0
+
+  disks_count:
+    type: integer
+    hidden: true
+    allow_update: false
+    display_label: Storage Disks Count
+    description: Number of additional disks attached to the VM.
+    default: 0
+    constraints:
+      - in_range:
+          - 0
+          - 1
+
+  storage_disk_provisioning:
+    type: string
+    hidden: true
+    allow_update: false
+    display_label: Storage Disk Provisioning Type
+    description: Storage Disk provisioning type for VM in vSphere.
+    default: thin
+    constraints:
+      - valid_values:
+          - thick
+          - thin
+
+  allowed_esxi_host:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: ESXi Hostnames
+    description: >
+      Names of the ESXi hosts on which the Virtual Machine should be placed.
+
+      Mandatory for USB passthrough.
+
+      Example: [node--01.example.local, node--02.example.local]
+    default: []
+
+  network_name:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Network Name
+    description: Network name specified in vSphere.
+    constraints:
+      - pattern: ^[a-zA-Z0-9_.-]+$
+        error_message: >
+          Must be letters (a-z, A-Z), numbers (0-9), underscores (_),
+
+          dots (.), or hyphens (-).
+
+  dhcp:
+    type: boolean
+    hidden: false
+    allow_update: false
+    display_label: DHCP
+    description: >
+      Enable to allow IP configuration to be taken from DHCP
+
+      instead of static IP settings.
+    default: true
+
+  dns:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: DNS Servers
+    description: 'List of IP addresses. Example: ["1.1.1.1", "8.8.8.8"]'
+    required: false
+    default: []
+
+  network_cidr:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Network CIDR
+    description: >
+      CIDR of the network. Example: 172.16.0.1/16.
+
+      Only required for static IP deployments, not for DHCP.
+    required: false
+    constraints:
+      - pattern: ^(?:((25[0-5]|2[0-4]\d|1\d\d|\d{1,2})(\.(25[0-5]|2[0-4]\d|1\d\d|\d{1,2})){3})\/(3[0-2]|[12]?\d)|)$
+        error_message: >
+          Invalid format for IP Address in CIDR format.
+
+          Example: 172.16.0.0/16
+
+  gateway:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Gateway IP
+    description: >
+      IP address. Example: 172.16.0.1.
+
+      Only required for static IP deployments, not for DHCP.
+    required: false
+    constraints:
+      - pattern: ^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$|^$
+        error_message: >
+          Invalid format for IP Address.
+
+          Example: 172.16.0.1
+
+  static_ip:
+    type: string
+    hidden: false
+    allow_update: false
+    display_label: Static IP and Mask Suffix
+    description: >
+      IP address and suffix. Example: 172.16.0.1/16.
+
+      Only required for static IP deployments, not for DHCP.
+    required: false
+    constraints:
+      - pattern: ^(?:((25[0-5]|2[0-4]\d|1\d\d|\d{1,2})(\.(25[0-5]|2[0-4]\d|1\d\d|\d{1,2})){3})\/(3[0-2]|[12]?\d)|)$
+        error_message: >
+          Invalid format for IP Address in CIDR format.
+
+          Example: 172.16.0.1/16
+
+  network_switch_distributed:
+    type: boolean
+    hidden: false
+    allow_update: false
+    display_label: Network Switch Distributed
+    description: Enable a Switch Distributed Network
+    default: true
+
+  network_external:
+    type: boolean
+    hidden: false
+    allow_update: false
+    display_label: Network External
+    description: Enable an External Network
+    default: true
+
+  network_management:
+    type: boolean
+    hidden: false
+    allow_update: false
+    display_label: Network Management
+    description: Enable a Management Network
+    default: true
+
+  pci_devices:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: PCI Devices
+    description: >
+      List of PCI Devices that will be created and attached
+
+      to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: []
+
+  usb_devices:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: USB Devices
+    description: >
+      List of USB Devices that will be created and attached
+
+      to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default:
+      - device_name: WIBU-Systems CodeMeter-Stick
+        controller_type: usb2
+
+  serial_ports:
+    type: list
+    hidden: false
+    allow_update: false
+    display_label: Serial Ports
+    description: >
+      A list of serial ports to pass through to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default: []
+
+  vm_advanced_parameters:
+    type: dict
+    hidden: true
+    allow_update: false
+    display_label: Advanced Parameters
+    description: >
+      Any vSphere advanced parameters to apply to the Virtual Machine.
+
+      See blueprint documentation for more details on the correct
+
+      formatting for this option.
+    default:
+      pciPassthru.use64bitMMIO: 'TRUE'
+      pciPassthru.64bitMMIOSizeGB: '128'
+      fixedPassthruHotPlugEnabled: 'TRUE'
+
+  cpu_hot_add:
+    type: boolean
+    hidden: true
+    display_label: CPU Hot Add Enabled
+    description: Enable CPU Hot Add for VM.
+    default: false
+
+  cpu_hot_remove:
+    type: boolean
+    hidden: true
+    display_label: CPU Hot Remove Enabled
+    description: Enable CPU Hot Remove for VM.
+    default: true
+
+  memory_hot_add:
+    type: boolean
+    hidden: true
+    display_label: Memory Hot Add Enabled
+    description: Enable Memory Hot Add for VM.
+    default: true
+
+  pci_turn_off_vm:
+    type: boolean
+    display_label: PCI turn on vm after attach
+    description: PCI turn off/on vm
+    default: true
+    hidden: true
+
+node_templates:
+
+  validate_base_url:
+    type: nativeedge.nodes.SoftwareComponent
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: application/scripts/verify_base_url.py
+          executor: central_deployment_agent
+          inputs:
+            base_url_secret_name: { get_input: artifact_configuration_secret_name }
+            json_url_key: artifact_base_url
+            visionpro_installer_filename: { get_input: visionpro_installer_filename }
+            designer_installer_filename: { get_input: designer_installer_filename }
+            vidi_installer_filename: { get_input: vidi_installer_filename }
+            deployment_variant: { get_input: deployment_variant }
+
+  cognex_instalation_files:
+    type: nativeedge.nodes.ApplicationModule
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start:
+          implementation: tests/utilities/verify_inputs.py
+          inputs:
+            ansible_external_venv: { get_input: ansible_external_venv }
+            sources: test
+            sensitive_keys: test
+            log_stdout: { get_input: ansible_log_stdout }
+            store_facts: false
+            debug_level: 0
+            playbook_path: application/ansible/installer_files_preparation.yaml
+            run_data:
+              deployment_variant: { get_input: deployment_variant }
+              installation_files_dir: { get_input: installation_files_dir }
+              installation_dir: { get_input: installation_dir }
+              visionpro_installer_url: { get_attribute: ["validate_base_url", "installer_urls", "visionpro"] }
+              visionpro_installer_filename: { get_input: visionpro_installer_filename }
+              vidi_installer_url: { get_attribute: ["validate_base_url", "installer_urls", "vidi"] }
+              vidi_installer_filename: { get_input: vidi_installer_filename }
+              designer_installer_url: { get_attribute: ["validate_base_url", "installer_urls", "designer"] }
+              designer_installer_filename: { get_input: designer_installer_filename }
+              headers: { get_secret: [{get_input: artifact_configuration_secret_name}, "artifact_base_headers"] }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm
+      - type: nativeedge.relationships.depends_on
+        target: validate_base_url
+
+  install_cognex_software:
+    type: nativeedge.nodes.ApplicationModule
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start:
+          implementation: tests/utilities/verify_inputs.py
+          inputs:
+            ansible_external_venv: { get_input: ansible_external_venv }
+            sources: test
+            sensitive_keys: test
+            log_stdout: { get_input: ansible_log_stdout }
+            store_facts: false
+            debug_level: 0
+            playbook_path: application/ansible/install_cognex_sw.yaml
+            run_data:
+              deployment_variant: { get_input: deployment_variant }
+              installation_files_dir: { get_input: installation_files_dir }
+              installation_dir: { get_input: installation_dir }
+              visionpro_installer_filename: { get_input: visionpro_installer_filename }
+              designer_installer_filename: { get_input: designer_installer_filename }
+              vidi_installer_filename: { get_input: vidi_installer_filename }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: cognex_instalation_files
+
+  install_driver:
+    type: nativeedge.nodes.ApplicationModule
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start:
+          implementation: tests/utilities/verify_inputs.py
+          inputs:
+            ansible_external_venv: { get_input: ansible_external_venv }
+            sources: test
+            sensitive_keys: test
+            log_stdout: { get_input: ansible_log_stdout }
+            store_facts: false
+            debug_level: 0
+            playbook_path: application/ansible/install_nvidia_drivers.yaml
+            run_data:
+              drivers_zip_url: { get_attribute: ["validate_base_url", "drivers_zip_url"] }
+              installation_files_dir: { get_input: installation_files_dir }
+              vm_username: { get_attribute: ["vm", "capabilities", "vm_username"] }
+              driver_script_exe_parameters: { get_input: driver_installers_additional_parameters }
+              driver_installers_zip_filename: { get_input: driver_installers_zip_filename }
+              gpu_support: { get_attribute: ["gpu_node", "is_gpu"] }
+              headers: { get_secret: [{get_input: artifact_configuration_secret_name}, "artifact_base_headers"] }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: install_cognex_software
+      - type: nativeedge.relationships.depends_on
+        target: validate_base_url
+      - type: nativeedge.relationships.depends_on
+        target: gpu_node
+
+  vm_network_config:
+    type: nativeedge.nodes.SoftwareComponent
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: infrastructure/common/scripts/prepare_resource_config.py
+          executor: central_deployment_agent
+          inputs:
+            template: infrastructure/common/templates/network_config.yaml
+            parameters:
+              dns: { get_input: dns }
+              network_name: { get_input: network_name }
+              network_switch_distributed: { get_input: network_switch_distributed }
+              network_external: { get_input: network_external }
+              network_management: { get_input: network_management }
+              dhcp: { get_input: dhcp }
+              network_cidr: { get_input: network_cidr }
+              gateway: { get_input: gateway }
+              static_ip: { get_input: static_ip }
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: validate_base_url
+
+  vm:
+    type: nativeedge.nodes.ApplicationModule
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        start:
+          implementation: tests/utilities/verify_inputs.py
+          inputs:
+            vsphere_secret_name: { get_environment_capability: vcenter_credentials }
+            template_name: { get_input: vm_template }
+            vm_name: { get_input: hostname }
+            vm_user_name: { get_input: vm_user_name }
+            vm_password_secret_name: { get_input: vm_password_secret_name }
+            vm_folder_name: { get_input: vm_folder }
+            datastore_name: { get_input: datastore_name }
+            vcpu: { get_input: vcpus }
+            memory_size: { get_input: memory_size }
+            os_disk_size: { get_input: os_disk_size }
+            storage_disk_size: { get_input: storage_disk_size }
+            disks_count: { get_input: disks_count }
+            disk_provisioning: { get_input: disk_provisioning }
+            storage_disk_provisioning: { get_input: storage_disk_provisioning }
+            allowed_esxi_hosts: { get_input: allowed_esxi_host }
+            networking: { get_attribute: ["vm_network_config", "template_resource_config"] }
+            pci_devices: { get_input: pci_devices }
+            usb_devices: { get_input: usb_devices }
+            serial_ports: { get_input: serial_ports }
+            vm_advanced_parameters: { get_input: vm_advanced_parameters }
+            cpu_hot_add: { get_input: cpu_hot_add }
+            cpu_hot_remove: { get_input: cpu_hot_remove }
+            memory_hot_add: { get_input: memory_hot_add }
+            pci_turn_off_vm: { get_input: pci_turn_off_vm }
+        poststart:
+          implementation: tests/utilities/set_runtime_properties.py
+          executor: central_deployment_agent
+          inputs:
+            vm_host: 10.10.10.10
+            vm_winrm_port: 5895
+            vm_name: test
+            vm_username: ADMIN
+    relationships:
+      - type: nativeedge.relationships.depends_on
+        target: vm_network_config
+
+  gpu_node:
+    type: nativeedge.nodes.SoftwareComponent
+    interfaces:
+      nativeedge.interfaces.lifecycle:
+        create:
+          implementation: application/scripts/gpu.py
+          executor: central_deployment_agent
+          inputs:
+            gpu: { get_input: pci_devices }
+capabilities:
+
+  installed_cognex_software:
+    description: Installed Cognex Software Version
+    value: { get_input: deployment_variant }
+
+  vm_host:
+    description: VM Host
+    value: { get_attribute: ["vm", "capabilities", "vm_host"] }
+
+  vm_name:
+    description: VM Name
+    value: { get_attribute: ["vm", "capabilities", "vm_name"] }
+
+  vm_username:
+    description: VM User Name
+    value: { get_attribute: ["vm", "capabilities", "vm_username"] }
+
+  vm_password_secret_name:
+    description: VM Password Secret Name
+    value: { get_input: vm_password_secret_name }
+
